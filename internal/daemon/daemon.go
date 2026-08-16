@@ -1,0 +1,262 @@
+// Package daemon is the always-on node process (leetd): local store + git,
+// the localhost human UI, the MCP surface, short-cadence sync (D5), and the
+// coordinator services (git-over-mTLS server, enrollment, discovery) when the
+// node is promoted. Headless — no browser dependency (D14).
+package daemon
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+
+	"leetoffice/internal/config"
+	"leetoffice/internal/httpui"
+	"leetoffice/internal/mcp"
+	"leetoffice/internal/memory"
+	"leetoffice/internal/rag"
+	"leetoffice/internal/store"
+	leetSync "leetoffice/internal/sync"
+)
+
+// Node is one running LeetOffice node.
+type Node struct {
+	Cfg   *config.Config
+	Store *store.Store
+	Repo  *leetSync.Repo
+	MCP   *mcp.Server
+}
+
+// Start opens the store and repo described by cfg.
+func Start(cfg *config.Config) (*Node, error) {
+	s, err := store.OpenStore(cfg.StoreDir)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := leetSync.Init(cfg.StoreDir)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.MainShare != "" {
+		if err := repo.AddRemote("origin", cfg.MainShare); err != nil {
+			return nil, err
+		}
+	}
+	actor := cfg.Actor
+	mcpSrv := mcp.NewServer(s, repo, searchBackend(cfg, s), actor)
+	return &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv}, nil
+}
+
+// searchBackend picks semantic search when Ollama is up, else the always-on
+// keyword fallback (D17; RUNBOOK allows the stub as long as search returns).
+func searchBackend(cfg *config.Config, s *store.Store) mcp.SearchFunc {
+	ollama := &rag.Ollama{BaseURL: cfg.Ollama.BaseURL, Model: cfg.Ollama.Model}
+	return func(query, typ string, tags []string, limit int) ([]mcp.Hit, error) {
+		var hits []rag.Hit
+		var err error
+		if ollama.Available() {
+			hits, err = ollama.SearchSemantic(s, query, typ, tags, limit)
+		} else {
+			hits, err = rag.Search(s, query, typ, tags, limit)
+		}
+		if err != nil {
+			return nil, err
+		}
+		out := make([]mcp.Hit, 0, len(hits))
+		for _, h := range hits {
+			out = append(out, mcp.Hit(h))
+		}
+		return out, nil
+	}
+}
+
+// ServeHTTP mounts the human UI and the MCP HTTP surface on one handler.
+func (n *Node) ServeHTTP() http.Handler {
+	mux := http.NewServeMux()
+	ui := &httpui.UI{Store: n.Store, Repo: n.Repo, Config: n.Cfg}
+	mux.Handle("/", ui.Handler())
+	mux.Handle("/mcp", n.MCP.Handler())
+	return mux
+}
+
+// Run blocks running the node loops until SIGINT/SIGTERM.
+func (n *Node) Run(ctx context.Context) error {
+	// localhost HTTP (UI + MCP)
+	httpSrv := &http.Server{Addr: n.Cfg.Listen.HTTP, Handler: n.ServeHTTP()}
+	go func() {
+		log.Printf("http: listening on %s (UI + /mcp)", n.Cfg.Listen.HTTP)
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("http: %v", err)
+		}
+	}()
+
+	// node networking (mTLS git service, enrollment, mDNS) — coordinator role
+	if n.Cfg.IsCoordinator() || strings.HasPrefix(n.Cfg.MainShare, "leet://") {
+		if err := n.StartNetworking(ctx); err != nil {
+			return err
+		}
+	}
+
+	// short-cadence sync (D5)
+	if n.Cfg.MainShare != "" {
+		go n.syncLoop(ctx)
+	}
+
+	// memory synthesis, digest, hygiene, monitor (D16, §7.3)
+	go n.jobsLoop(ctx)
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	select {
+	case <-stop:
+	case <-ctx.Done():
+	}
+	shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return httpSrv.Shutdown(shutCtx)
+}
+
+func (n *Node) syncLoop(ctx context.Context) {
+	every := time.Duration(n.Cfg.SyncEverySec) * time.Second
+	if every <= 0 {
+		every = 5 * time.Second
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	n.syncOnce("timer")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			n.syncOnce("timer")
+		}
+	}
+}
+
+// SyncOnce performs one fetch→merge→push cycle (§6.5) and reports conflicts.
+func (n *Node) SyncOnce() (*leetSync.SyncResult, error) {
+	if n.Cfg.MainShare == "" {
+		return nil, fmt.Errorf("no main share configured")
+	}
+	res, err := n.Repo.Sync("origin", n.Cfg.Actor)
+	if err != nil {
+		return res, err
+	}
+	for _, c := range res.Conflicts {
+		log.Printf("conflict: %s block %s — both versions retained", c.Slug, c.BlockID)
+	}
+	return res, nil
+}
+
+func (n *Node) syncOnce(reason string) {
+	res, err := n.SyncOnce()
+	if err != nil {
+		log.Printf("sync (%s): %v", reason, err)
+		return
+	}
+	if res.Pulled || res.Pushed || res.Merged {
+		log.Printf("sync (%s): pulled=%v pushed=%v merged=%v conflicts=%d",
+			reason, res.Pulled, res.Pushed, res.Merged, len(res.Conflicts))
+	}
+}
+
+// jobsLoop runs the automation suite (M19): debounced memory synthesis on
+// store change (D9), the daily digest (D16), and hourly doc hygiene + monitor
+// notices (§7.3). Everything is best-effort: a failure logs and waits for the
+// next tick.
+func (n *Node) jobsLoop(ctx context.Context) {
+	lastSynth := ""
+	lastDigestDay := time.Now().UTC().Format("2006-01-02")
+	synthT := time.NewTicker(60 * time.Second)
+	digestT := time.NewTicker(10 * time.Minute)
+	hygT := time.NewTicker(time.Hour)
+	defer synthT.Stop()
+	defer digestT.Stop()
+	defer hygT.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-synthT.C:
+			head, err := n.Repo.HeadHash()
+			if err != nil || head == lastSynth {
+				break
+			}
+			if err := memory.Synthesize(n.Store, n.Repo, n.Cfg.Actor); err != nil {
+				log.Printf("memory: %v", err)
+				break
+			}
+			lastSynth = head
+		case <-digestT.C:
+			day := time.Now().UTC().Format("2006-01-02")
+			if day == lastDigestDay {
+				break
+			}
+			if _, err := memory.DailyDigest(n.Store, n.Repo, time.Now().UTC(), n.Cfg.Actor); err != nil {
+				log.Printf("digest: %v", err)
+				break
+			}
+			lastDigestDay = day
+		case <-hygT.C:
+			issues, err := memory.Hygiene(n.Store, 0)
+			if err != nil {
+				log.Printf("hygiene: %v", err)
+				break
+			}
+			if err := n.writeNotice(issues); err != nil {
+				log.Printf("notice: %v", err)
+			}
+			for _, i := range issues {
+				log.Printf("hygiene: %s: %s", i.Kind, i.Detail)
+			}
+		}
+	}
+}
+
+// writeNotice maintains NOTICE.md in the store — the monitor's human-facing
+// alert surface (§7.3).
+func (n *Node) writeNotice(issues []memory.Issue) error {
+	var b strings.Builder
+	b.WriteString("# Notices\n\n_Generated by the consistency monitor. Empty list = all clear._\n\n")
+	if len(issues) == 0 {
+		b.WriteString("- none\n")
+	} else {
+		for _, i := range issues {
+			fmt.Fprintf(&b, "- **%s**: %s\n", i.Kind, i.Detail)
+		}
+	}
+	return os.WriteFile(filepath.Join(n.Store.Root, "NOTICE.md"), []byte(b.String()), 0o644)
+}
+
+// InitBareShare creates the main share bare repo for a coordinator config at
+// the path given by a file:// MainShare URL.
+func InitBareShare(cfg *config.Config) (string, error) {
+	raw := cfg.MainShare
+	raw = trimScheme(raw)
+	if raw == "" {
+		return "", fmt.Errorf("coordinator needs a main share URL (file:///path/main.git)")
+	}
+	if _, err := leetSync.InitBare(raw); err != nil {
+		return "", err
+	}
+	return raw, nil
+}
+
+func trimScheme(url string) string {
+	for _, p := range []string{"file://", "leet://", "ssh://", "http://", "https://"} {
+		if len(url) >= len(p) && url[:len(p)] == p {
+			if p == "file://" {
+				return url[len(p):]
+			}
+			return "" // non-local scheme — no local path to create
+		}
+	}
+	return url
+}

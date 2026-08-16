@@ -1,0 +1,11 @@
+{
+  "name": "store-stats",
+  "kind": "tool",
+  "version": "0.1.0",
+  "stability": "experimental",
+  "tools": ["audit_query", "search"],
+  "clean_uses": 0,
+  "threshold": 3,
+  "author": "human:josh",
+  "description": "Report store activity: doc counts per actor from the audit trail."
+}

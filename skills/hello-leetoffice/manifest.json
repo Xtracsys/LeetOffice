@@ -1,0 +1,11 @@
+{
+  "name": "hello-leetoffice",
+  "kind": "skill",
+  "version": "0.1.0",
+  "stability": "experimental",
+  "tools": ["search", "read_doc"],
+  "clean_uses": 0,
+  "threshold": 3,
+  "author": "human:josh",
+  "description": "Starter skill: greet a teammate by reading their latest note."
+}

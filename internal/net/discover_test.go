@@ -1,0 +1,94 @@
+package net
+
+import (
+	"bytes"
+	"fmt"
+	"net"
+	"reflect"
+	"testing"
+	"time"
+)
+
+func TestPeerTXTAssemblyAndParse(t *testing.T) {
+	fields := peerTXT("node-a", "coordinator", "ab12cd34")
+	want := []string{"node_id=node-a", "role=coordinator", "fp=ab12cd34"}
+	if !reflect.DeepEqual(fields, want) {
+		t.Fatalf("TXT records = %v, want %v", fields, want)
+	}
+	nodeID, role, fp := parsePeerTXT(fields)
+	if nodeID != "node-a" || role != "coordinator" || fp != "ab12cd34" {
+		t.Fatalf("parsed (%q,%q,%q), want (node-a,coordinator,ab12cd34)", nodeID, role, fp)
+	}
+
+	// Order must not matter and unknown records must be ignored.
+	shuffled := []string{"someother=x", "fp=ab12cd34", "node_id=node-a", "role=coordinator"}
+	if nodeID, role, fp = parsePeerTXT(shuffled); nodeID != "node-a" || role != "coordinator" || fp != "ab12cd34" {
+		t.Fatalf("shuffled parse = (%q,%q,%q)", nodeID, role, fp)
+	}
+
+	// Non-LeetOffice mDNS records are not peers.
+	if nodeID, _, _ = parsePeerTXT([]string{"path=/srv"}); nodeID != "" {
+		t.Fatalf("foreign record parsed as peer %q", nodeID)
+	}
+}
+
+func TestAnnounceAndDiscoverOverMulticast(t *testing.T) {
+	if testing.Short() {
+		t.Skip("real mDNS multicast kept out of short/CI runs")
+	}
+	if err := probeMulticast(); err != nil {
+		t.Skipf("no mDNS multicast route in this environment: %v", err)
+	}
+	a, err := Announce("leet-test-node", "coordinator", "test-fp", "", 7418)
+	if err != nil {
+		t.Fatalf("Announce: %v", err)
+	}
+	defer a.Shutdown()
+
+	peers, err := DiscoverPeers(3 * time.Second)
+	if err != nil {
+		t.Fatalf("DiscoverPeers: %v", err)
+	}
+	for _, p := range peers {
+		if p.NodeID == "leet-test-node" {
+			if p.Role != "coordinator" || p.Fingerprint != "test-fp" {
+				t.Fatalf("discovered peer %+v lost TXT fields", p)
+			}
+			return
+		}
+	}
+	t.Fatalf("did not discover our own announcement in %d peers", len(peers))
+}
+
+// probeMulticast reports whether this environment can reach the mDNS
+// group at all (sandboxes and container CI often cannot).
+func probeMulticast() error {
+	// send a probe and verify we can receive multicast at all — a bare write
+	// succeeds even on hosts where multicast delivery is black-holed.
+	c, err := net.Dial("udp4", "224.0.0.251:5353")
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if _, err := c.Write([]byte("leetprobe")); err != nil {
+		return err
+	}
+	lo, err := net.ListenMulticastUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4(224, 0, 0, 251), Port: 5353})
+	if err != nil {
+		return err
+	}
+	defer lo.Close()
+	if err := lo.SetDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
+		return err
+	}
+	buf := make([]byte, 64)
+	for {
+		n, _, err := lo.ReadFromUDP(buf)
+		if err != nil {
+			return fmt.Errorf("no multicast traffic received: %w", err)
+		}
+		if bytes.Contains(buf[:n], []byte("leetprobe")) {
+			return nil
+		}
+	}
+}

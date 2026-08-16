@@ -1,0 +1,11 @@
+LeetOffice
+Copyright 2026 The LeetOffice Authors
+
+This product includes software developed by The LeetOffice Authors.
+
+This product bundles the following third-party components:
+
+- go-git v5 (BSD-3-Clause) — https://github.com/go-git/go-git
+- hashicorp/mdns (MIT) — https://github.com/hashicorp/mdns
+
+The desktop client bundles Electron (MIT) — https://www.electronjs.org/

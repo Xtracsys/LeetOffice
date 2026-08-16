@@ -1,0 +1,16 @@
+# build artifacts
+/dist/
+/leetd
+*.test
+
+# node / electron
+node_modules/
+app/node_modules/
+
+# macos noise
+.DS_Store
+._*
+
+# local runtime data
+/main-share.git/
+/identity/
