@@ -27,7 +27,11 @@ jobs:
             mv "$f" "$(printf '%s' "$f" | sed "s/^leetd-[^-]*-/leetd-${VER}-/")"
           done
           rm -f checksums-*.txt
-          shasum -a 256 leetd-* > "checksums-${VER}.txt"
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 leetd-* > "checksums-${VER}.txt"
+          else
+            sha256sum leetd-* > "checksums-${VER}.txt"
+          fi
           ls -l
       - name: GitHub Release
         uses: softprops/action-gh-release@v2

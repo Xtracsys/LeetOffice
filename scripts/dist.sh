@@ -28,6 +28,13 @@ for target in \
 done
 
 cp docs/user-guide.html dist/leetoffice-guide.html
-( cd dist && shasum -a 256 leetd-* > "checksums-${VERSION}.txt" )
+# shasum is a perl tool not present on every image (CI ubuntu lacked it);
+# fall back through sha256sum and openssl so this works everywhere.
+cksum() {
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$@"
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"
+  else openssl dgst -sha256 "$@" | sed "s/^SHA2-56(.*)= //"; fi
+}
+( cd dist && cksum leetd-* > "checksums-${VERSION}.txt" )
 echo "done:"
 ls -lh dist | tail -n +2
