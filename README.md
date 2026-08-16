@@ -61,7 +61,7 @@ write attributed to the agent, merge-safe against human edits.
 **macOS / Linux (one line):**
 
 ```sh
-curl -fsSL https://leetoffice.dev/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh
 ```
 
 **Homebrew** (once the tap ships): `brew install leetoffice/tap/leetd`

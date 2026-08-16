@@ -30,6 +30,7 @@ jobs:
           files: |
             dist/leetd-*
             dist/checksums-*.txt
+            dist/leetoffice-guide.html
           body: |
             ## LeetOffice ${{ github.ref_name }}
 
@@ -40,7 +41,7 @@ jobs:
             ### Install
 
             ```sh
-            curl -fsSL https://leetoffice.dev/install.sh | sh   # macOS / Linux
+            curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh   # macOS / Linux
             ```
 
             Or grab a binary below (darwin/arm64, darwin/amd64, linux/amd64,

@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Email: security@leetoffice.dev (or open a private security advisory on GitHub).
+Open a **private security advisory** on GitHub (Security → Report a vulnerability).
 Please include reproduction steps and affected versions (`leetd version`).
 We aim to respond within 72 hours.
 

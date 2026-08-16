@@ -1,7 +1,7 @@
 #!/bin/sh
 # LeetOffice one-line installer.
 #
-#   curl -fsSL https://leetoffice.dev/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh
 #
 # (or from a checkout: sh install.sh [--version vX.Y.Z])
 # Downloads the right static binary for this OS/arch, verifies its checksum,

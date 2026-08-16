@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LeetOffice — Install &amp; Basic Use Guide</title>
+<style>
+:root{
+ --red:#d92a2a; --bg:#fff; --surface:#f8f5eb; --text:#111; --muted:#5b5b57; --faint:#8a8a85;
+ --line:rgba(17,17,17,.12); --line2:rgba(17,17,17,.24); --wash:rgba(17,17,17,.05);
+ --term:#141414; --termline:#2a2a2a; --termtext:#f8f5eb;
+ --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+ --mono:'JetBrains Mono',ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased}
+.wrap{max-width:880px;margin:0 auto;padding:0 24px 60px}
+header.top{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.88);
+ -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.navwrap{max-width:880px;margin:0 auto;padding:0 24px;height:54px;display:flex;align-items:center;gap:20px}
+.brand{display:inline-flex;gap:9px;align-items:center;font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.18em}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--red);animation:p 2s infinite}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.35}}
+.navside{margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--faint)}
+.hero{padding:44px 0 8px}
+.eyebrow{display:inline-flex;gap:9px;align-items:center;font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);padding:6px 12px;margin-bottom:14px}
+h1{font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin-bottom:10px}
+.sub{color:var(--muted);max-width:60ch}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--line2);margin:26px 0 22px;flex-wrap:wrap}
+.tab{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+ padding:10px 16px;cursor:pointer;border:1px solid transparent;border-bottom:0;position:relative;top:1px;user-select:none}
+.tab.on{color:var(--text);border-color:var(--line2);background:var(--bg);border-top:2px solid var(--red)}
+.panel{display:none}.panel.on{display:block}
+h2{font-size:19px;font-weight:700;letter-spacing:-.02em;margin:26px 0 8px}
+h2:first-child{margin-top:0}
+p{margin:.6rem 0;color:#333}
+ol,ul{margin:.6rem 0 .6rem 1.4rem}
+li{margin:.3rem 0;color:#333}
+code{font-family:var(--mono);font-size:.84em;background:var(--wash);border:1px solid var(--line);padding:.05em .35em;border-radius:3px}
+pre{font-family:var(--mono);font-size:.8rem;background:var(--term);color:var(--termtext);border:1px solid var(--termline);
+ padding:14px 16px;overflow-x:auto;line-height:1.55;box-shadow:0 12px 40px rgba(17,17,17,.14);margin:12px 0;border-radius:2px}
+pre .c{color:rgba(248,245,235,.45)}
+.card{border:1px solid var(--line);background:var(--bg);padding:16px 18px;margin:14px 0}
+.card.surface{background:var(--surface)}
+.termcard{background:var(--term);color:var(--termtext);border:1px solid var(--termline);font-family:var(--mono);
+ font-size:.82rem;padding:14px 16px;box-shadow:0 12px 40px rgba(17,17,17,.18);margin:12px 0}
+.termcard .tl{color:rgba(248,245,235,.5);font-size:10px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:6px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line2)}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;color:#333}
+.note{border-left:3px solid var(--red);padding:10px 14px;background:rgba(217,42,42,.05);margin:14px 0;font-size:14px}
+.ok{border-left:3px solid #2f855a;padding:10px 14px;background:rgba(47,133,90,.06);margin:14px 0;font-size:14px}
+kbd{font-family:var(--mono);font-size:.8em;border:1px solid var(--line2);border-bottom-width:2px;padding:.1em .45em;border-radius:3px;background:var(--surface)}
+.mono{font-family:var(--mono)}
+footer{border-top:1px solid var(--line);margin-top:40px;padding-top:16px;font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--faint)}
+@media print{header.top{position:static}.tabs{display:none}.panel{display:block!important}}
+</style>
+</head>
+<body>
+<header class="top"><div class="navwrap">
+ <span class="brand"><span class="pulse"></span>LEETOFFICE</span>
+ <span class="navside">INSTALL &amp; USE GUIDE</span>
+</div></header>
+
+<div class="wrap">
+<section class="hero">
+ <div class="eyebrow"><span class="pulse"></span>FILE / GUIDE · v0.1 · 100% LOCAL</div>
+ <h1>From zero to a team workspace</h1>
+ <p class="sub">LeetOffice is a workspace where humans and AI agents share one store — chat, docs,
+ tasks, links — with every change attributed in a git audit trail. No cloud, no accounts,
+ no data leaving your machines. This guide gets you installed, running, and working in
+ about five minutes. It is a standalone file: save it, print it, share it.</p>
+</section>
+
+<div class="tabs">
+ <div class="tab on" data-tab="install">01 · Install</div>
+ <div class="tab" data-tab="firstrun">02 · First run</div>
+ <div class="tab" data-tab="teams">03 · Build a team</div>
+ <div class="tab" data-tab="daily">04 · Everyday use</div>
+ <div class="tab" data-tab="agents">05 · Add an AI agent</div>
+ <div class="tab" data-tab="settings">06 · Settings &amp; always-on</div>
+ <div class="tab" data-tab="trouble">07 · Troubleshooting</div>
+</div>
+
+<!-- ================================================== 01 INSTALL -->
+<section class="panel on" id="panel-install">
+ <h2>One line (macOS &amp; Linux)</h2>
+ <pre>curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh</pre>
+ <p>The script detects your platform, downloads the right binary, <b>verifies its SHA-256
+ checksum</b>, installs to <code>~/.local/bin</code>, and tells you what to do next.
+ If that folder isn't on your <span class="mono">PATH</span>, it shows the exact line to add.</p>
+
+ <h2>From a GitHub release (any platform, no script)</h2>
+ <ol>
+  <li>Open the latest <span class="mono">github.com/leetoffice/leetoffice/releases</span></li>
+  <li>Download your binary:
+   <table>
+   <tr><th>macOS (Apple Silicon)</th><td><code>leetd-VERSION-darwin-arm64</code></td></tr>
+   <tr><th>macOS (Intel)</th><td><code>leetd-VERSION-darwin-amd64</code></td></tr>
+   <tr><th>Linux x86-64 / arm64</th><td><code>leetd-VERSION-linux-amd64</code> / <code>-arm64</code></td></tr>
+   <tr><th>Windows</th><td><code>leetd-VERSION-windows-amd64.exe</code></td></tr>
+   </table></li>
+  <li>Verify it: <pre>shasum -a 256 -c checksums-VERSION.txt <span class="c"># in the download folder</span></pre></li>
+  <li>Make it runnable and put it somewhere on your <span class="mono">PATH</span>:
+   <pre>chmod +x leetd-VERSION-* &amp;&amp; mv leetd-VERSION-darwin-arm64 /usr/local/bin/leetd</pre></li>
+ </ol>
+ <div class="note">macOS Gatekeeper will warn about an unsigned binary the first time.
+ Right-click → Open (or System Settings → Privacy &amp; Security → Open Anyway).
+ Signing/notarization is on the roadmap — see the README's "What it isn't (yet)".</div>
+
+ <h2>From source</h2>
+ <pre>git clone https://github.com/leetoffice/leetoffice &amp;&amp; cd leetoffice
+go build -o leetd ./cmd/leetd   <span class="c"># pure Go, no cgo, no system deps</span></pre>
+ <p>Check what you built:</p>
+ <pre>leetd version   <span class="c"># e.g. leetoffice v0.1.0 (8abe240) darwin/arm64</span></pre>
+</section>
+
+<!-- ================================================== 02 FIRST RUN -->
+<section class="panel" id="panel-firstrun">
+ <h2>Run one command</h2>
+ <pre>leetd</pre>
+ <p>No arguments. The daemon starts and prints a local address:</p>
+ <div class="termcard"><div class="tl">CONSOLE</div>
+ leetd: UI on http://127.0.0.1:7667 (Ctrl+C to stop)</div>
+ <p>Open that address in a browser. First run shows the setup wizard — three choices,
+ plain language:</p>
+ <ul>
+  <li><b>Start a new team</b> — this machine keeps the shared store and can invite others.
+   After setup you'll see your <b>team invite code</b>; share it out of band (message it to
+   your teammate however you like).</li>
+  <li><b>Join a team on my network</b> — coordinators on your LAN are auto-discovered and
+   offered in a dropdown; pick one, paste the invite code, click Join. One click handles
+   the certificate enrollment and encrypted-sync setup.</li>
+  <li><b>Just me, for now</b> — a private workspace; you can join or start a team later.</li>
+ </ul>
+ <div class="ok">Type your name and go. You land in a living workspace: a welcome doc,
+ a <span class="mono">#general</span> channel with a greeting, and starter channels — not empty screens.</div>
+ <h2>What just happened on disk</h2>
+ <table>
+  <tr><th>Your workspace</th><td><code>~/LeetOffice</code> (default; a git repository — your audit trail)</td></tr>
+  <tr><th>Node config</th><td><code>~/.config/leetoffice/node.json</code></td></tr>
+  <tr><th>Team share (coordinator)</th><td><code>~/main-share.git</code> (a bare repo peers sync to)</td></tr>
+  <tr><th>Identity / certificates</th><td><code>~/.leetoffice-identity</code> — back this up; it's your node's membership</td></tr>
+ </table>
+</section>
+
+<!-- ================================================== 03 TEAMS -->
+<section class="panel" id="panel-teams">
+ <h2>Second machine, sixty seconds</h2>
+ <ol>
+  <li>Install LeetOffice there (tab 01).</li>
+  <li>Run <code>leetd</code> → choose <b>Join a team</b>. Your coordinator appears in the
+   dropdown automatically (mDNS); if not, type <code>hostname.local:7443</code>.</li>
+  <li>Paste the invite code — the coordinator shows it on its <b>Settings</b> page in a
+   dark terminal card, with a regenerate button.</li>
+ </ol>
+ <div class="ok">Enrollment issues that machine an mTLS certificate. From then on, both
+ machines sync every few seconds over encrypted, mutually-authenticated TLS. Either can
+ go offline for any length of time — on reconnect it catches up in one exchange.</div>
+ <h2>How sync stays safe</h2>
+ <p>LeetOffice merges at the <b>block</b> level, not the file level. If you and a teammate
+ (or an agent) edit the same document at the same time, <b>both versions are kept</b> and
+ the later one is flagged with a red "conflicting edit" banner you can resolve by editing.
+ Nothing is ever silently overwritten.</p>
+ <h2>More machines</h2>
+ <p>Same join flow, same invite code (regenerate it in Settings whenever you want to
+ rotate access — already-joined nodes keep working).</p>
+</section>
+
+<!-- ================================================== 04 DAILY -->
+<section class="panel" id="panel-daily">
+ <h2>The persistent menubar</h2>
+ <p>Every page carries the same bar: <b>Chat · Docs · Memory · History · Agents · Settings</b>,
+ with your name on the right so you always know whose changes you're making.</p>
+ <h2>Chat</h2>
+ <ul>
+  <li>Pick or create channels (<b>+ new channel</b>); <kbd>Enter</kbd> sends,
+   <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line.</li>
+  <li>The rail shows channels with message counts and People &amp; agents presence —
+   a red pulsing dot means online now, gray means active recently.</li>
+ </ul>
+ <h2>Docs</h2>
+ <ul>
+  <li><b>Docs</b> → create any type (doc, task, contact, channel, company, email) or open
+   one and edit blocks directly; add new blocks with a type picker.</li>
+  <li>Every save is a git commit attributed to you. Docs are self-contained HTML files
+   you can open read-only in any browser, forever.</li>
+ </ul>
+ <h2>Memory &amp; History</h2>
+ <ul>
+  <li><b>Memory</b> is the team's auto-maintained context file (what's in flight, open
+   tasks, decisions, owners) — agents read it too.</li>
+  <li><b>History</b> is the entire audit trail: every change, who made it, when, which
+   files, which commit. Filter by actor with one click.</li>
+ </ul>
+</section>
+
+<!-- ================================================== 05 AGENTS -->
+<section class="panel" id="panel-agents">
+ <h2>Connect any MCP-capable AI client</h2>
+ <p>Claude Code, Codex, Cursor, Hermes — anything that speaks MCP can join your team as
+ a teammate with its own identity. The <b>Agents</b> page shows your exact configuration
+ with a copy button; or from a terminal:</p>
+ <pre>leetd mcp-install                    <span class="c"># prints the snippet</span>
+leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json here for Claude Code</span></pre>
+ <p>The snippet looks like:</p>
+ <pre>{
+  "mcpServers": {
+    "leetoffice": {
+      "command": "leetd",
+      "args": ["mcp", "--actor", "agent:hermes"]
+    }
+  }
+}</pre>
+ <h2>What the agent can do</h2>
+ <table>
+  <tr><th><code>send_message</code></th><td>post in any channel (auto-creates it)</td></tr>
+  <tr><th><code>list_channels</code></th><td>see the conversation it's joining</td></tr>
+  <tr><th><code>read_doc</code> / <code>write_doc</code></th><td>read and edit documents, block by block</td></tr>
+  <tr><th><code>create_task</code> / <code>link</code></th><td>file work and link anything to anything</td></tr>
+  <tr><th><code>search</code></th><td>keyword always; semantic via local Ollama when available</td></tr>
+  <tr><th><code>audit_query</code> / <code>diff</code></th><td>inspect history like anyone else</td></tr>
+ </table>
+ <div class="ok">Every agent write is attributed (<code>agent:hermes</code>) in the same
+ git audit trail as yours — and the block-level merge protects your edits from collisions.</div>
+</section>
+
+<!-- ================================================== 06 SETTINGS -->
+<section class="panel" id="panel-settings">
+ <h2>Make it always-on</h2>
+ <p><b>Settings → make always-on</b> registers LeetOffice as a login service (launchd on
+ macOS, systemd on Linux). It starts when you log in, keeps running, and survives
+ reboots — no terminal needed ever again. <b>undo</b> removes it. CLI equivalents:
+ <code>leetd install</code> / <code>leetd uninstall</code>.</p>
+ <h2>Team invite codes</h2>
+ <p>Coordinators: Settings shows the current code in a terminal card with
+ <b>regenerate invite code</b>. Rotation invalidates the old code but never kicks out
+ already-enrolled machines.</p>
+ <h2>Everything else on the page</h2>
+ <ul>
+  <li><b>Your name</b> — the attribution stamped on every change you make</li>
+  <li><b>Sync every</b> — cadence in seconds (default 5)</li>
+  <li><b>Ollama URL / model</b> — point at a local Ollama to upgrade search to semantic;
+   leave as-is for keyword search that always works</li>
+  <li><b>sync now</b> — force one sync cycle</li>
+ </ul>
+ <h2>Backups</h2>
+ <p>Your entire team's world is two folders: the store (default <code>~/LeetOffice</code>)
+ and the share (<code>~/main-share.git</code> on the coordinator). Both are plain git
+ repos — copy them to any backup disk (encrypting that disk is a good idea) and you've
+ backed up everything, history included.</p>
+</section>
+
+<!-- ================================================== 07 TROUBLE -->
+<section class="panel" id="panel-trouble">
+ <h2>Quick answers</h2>
+ <table>
+ <tr><th>"address already in use" / UI won't start</th>
+     <td>Another LeetOffice (or app) holds port 7667. Stop the other one, or set a
+     different <code>listen.http</code> in <code>~/.config/leetoffice/node.json</code>.</td></tr>
+ <tr><th>Join failed — "could not reach enrollment"</th>
+     <td>Use the coordinator's <b>enrollment</b> address (port 7443 by default — shown on
+     its Settings page), not its sync port. Same Wi-Fi/network? mDNS usually fills this
+     in for you.</td></tr>
+ <tr><th>Teammate joined but seems on a separate team</th>
+     <td>Run <code>leetd version</code> on both machines — both need v0.1.0+ (the join
+     fix). Re-join with <code>leetd enroll --coordinator host:7443 --secret CODE</code>.</td></tr>
+ <tr><th>IPv6 mDNS note in the console</th>
+     <td>One line saying IPv6 multicast is unavailable is normal on many networks;
+     discovery continues over IPv4.</td></tr>
+ <tr><th>Messages/docs not appearing on the other machine</th>
+     <td>Check History on both — sync errors log there. Confirm both nodes' Settings show
+     the same team share. <b>sync now</b> forces a cycle.</td></tr>
+ <tr><th>Upgrade</th>
+     <td>Replace the binary, restart (or it restarts itself if always-on). Stores are
+     forward-compatible; <code>leetd check</code> self-tests.</td></tr>
+ <tr><th>Full uninstall</th>
+     <td><code>leetd uninstall</code> (service), delete the binary, and — if you really
+     want everything gone — <code>~/LeetOffice</code>, <code>~/main-share.git</code>,
+     <code>~/.config/leetoffice</code>, <code>~/.leetoffice-identity</code>.</td></tr>
+ </table>
+ <h2>Where to get help</h2>
+ <p>Issues: <span class="mono">github.com/leetoffice/leetoffice/issues</span> — the bug
+ template asks for <code>leetd version</code>, your setup, and console output; that's
+ usually enough to diagnose fast. Security: see SECURITY.md (private advisories).</p>
+</section>
+
+<footer>LEETOFFICE · 100% LOCAL, NO EGRESS · APACHE-2.0 · THIS GUIDE IS A STANDALONE FILE — SAVE OR PRINT IT (Ctrl/Cmd+P prints all tabs)</footer>
+</div>
+
+<script>
+document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click',function(){
+ document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('on',x===t)});
+ document.querySelectorAll('.panel').forEach(function(p){p.classList.toggle('on',p.id==='panel-'+t.dataset.tab)});
+ window.scrollTo({top:0});
+});});
+</script>
+<script type="application/json" id="leet-doc">
+{
+  "$schema": "https://leetoffice.dev/schema/doc.json",
+  "id": "guide0000000000000000000000000001",
+  "type": "doc",
+  "slug": "user-guide",
+  "title": "LeetOffice — Install & Basic Use Guide",
+  "version": 1,
+  "updated": "2026-08-16T00:00:00Z",
+  "tags": ["guide", "install", "handbook"],
+  "blocks": [
+    {"id": "blk_install", "type": "heading", "content": "01 Install", "level": 2},
+    {"id": "blk_i1", "type": "paragraph", "content": "One line on macOS/Linux: curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh — platform detection, SHA-256 verification, installs to ~/.local/bin. Or download a release binary (darwin/arm64, darwin/amd64, linux/amd64, linux/arm64, windows/amd64), verify checksums, place on PATH. From source: go build -o leetd ./cmd/leetd."},
+    {"id": "blk_firstrun", "type": "heading", "content": "02 First run", "level": 2},
+    {"id": "blk_f1", "type": "paragraph", "content": "Run leetd with no arguments; open http://127.0.0.1:7667. Wizard: start a team (coordinator + invite code), join a team (auto-discovered coordinator + invite code), or just me. Lands on a living workspace: welcome doc, #general greeting, starter channels."},
+    {"id": "blk_teams", "type": "heading", "content": "03 Build a team", "level": 2},
+    {"id": "blk_t1", "type": "paragraph", "content": "Second machine: install, run, Join a team, pick the discovered coordinator (or hostname.local:7443), paste the invite code. mTLS enrollment; encrypted sync every ~5s; offline nodes catch up in one exchange; block-level merge keeps both sides of concurrent edits."},
+    {"id": "blk_daily", "type": "heading", "content": "04 Everyday use", "level": 2},
+    {"id": "blk_d1", "type": "paragraph", "content": "Persistent menubar: Chat (channels, presence, Enter sends), Docs (create/edit any type, block editor), Memory (auto team context), History (full attributed audit trail with actor filters), Agents, Settings."},
+    {"id": "blk_agents", "type": "heading", "content": "05 Add an AI agent", "level": 2},
+    {"id": "blk_a1", "type": "paragraph", "content": "leetd mcp-install prints the MCP config (or copy from the Agents page). Nine tools including send_message and list_channels; every agent write attributed like a human's and protected by block merge."},
+    {"id": "blk_settings", "type": "heading", "content": "06 Settings & always-on", "level": 2},
+    {"id": "blk_s1", "type": "paragraph", "content": "make always-on registers a login service (launchd/systemd). Coordinators see and rotate the team invite code. Editable identity, sync cadence, Ollama endpoint. Backups = copy the store and the bare share (both plain git)."},
+    {"id": "blk_trouble", "type": "heading", "content": "07 Troubleshooting", "level": 2},
+    {"id": "blk_r1", "type": "paragraph", "content": "Port 7443 vs sync port for joins; both nodes need v0.1.0+ (join fix); IPv6 mDNS note is benign; upgrade = replace binary + restart; full uninstall removes four listed paths."}
+  ],
+  "properties": {"audience": "end users", "format": "standalone tabbed HTML", "tabs": 7},
+  "audit": {"last_editor": "human:release", "last_commit": "docs"}
+}
+</script>
+</body>
+</html>

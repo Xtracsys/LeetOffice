@@ -23,6 +23,7 @@ for target in \
     -o "$out" ./cmd/leetd
 done
 
+cp docs/user-guide.html dist/leetoffice-guide.html
 ( cd dist && shasum -a 256 leetd-* > "checksums-${VERSION}.txt" )
 echo "done:"
 ls -lh dist | tail -n +2
