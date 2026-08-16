@@ -23,6 +23,10 @@ type UI struct {
 	Store  *store.Store
 	Repo   *leetSync.Repo
 	Config *config.Config
+	// BinaryPath/CfgPath fill in the agent-connection snippet with real
+	// locations (daemon sets them; tests can stub).
+	BinaryPath string
+	CfgPath    string
 }
 
 // Handler builds the HTTP routes.
@@ -33,6 +37,7 @@ func (u *UI) Handler() http.Handler {
 	mux.HandleFunc("/doc/", u.handleDoc)
 	mux.HandleFunc("/sync", u.handleSync)
 	mux.HandleFunc("/memory", u.handleMemory)
+	mux.HandleFunc("/agents", u.handleAgents)
 	return mux
 }
 
@@ -61,11 +66,12 @@ func (u *UI) handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html><html><head><meta charset=utf-8><title>LeetOffice</title>" + pageStyle + "</head><body><nav><b>LeetOffice</b>")
-	fmt.Fprintf(&b, "<a href='/'>docs</a> <a href='/memory'>memory</a> ")
+	fmt.Fprintf(&b, "<a href='/'>docs</a> <a href='/memory'>memory</a> <a href='/agents'>agents</a> ")
 	fmt.Fprintf(&b, "<a href='#' onclick=\"fetch('/sync',{method:'POST'}).then(()=>location.reload());return false\">sync now</a></nav>")
 
 	fmt.Fprintf(&b, "<p class=meta>node %s · role %s · store %s · actor %s</p>",
 		html.EscapeString(u.Config.NodeID), u.Config.Role, html.EscapeString(u.Config.StoreDir), html.EscapeString(u.Config.Actor))
+	b.WriteString(`<form method="post" action="/service/install" style="margin:.4rem 0 1rem"><button title="Start LeetOffice automatically at login and keep it running">make always-on</button></form>`)
 
 	b.WriteString("<table><tr><th>slug</th><th>type</th><th>title</th><th>updated</th><th>links</th></tr>")
 	for _, d := range docs {
@@ -239,4 +245,45 @@ func slugify(s string) string {
 		}
 	}
 	return strings.Trim(string(out), "-")
+}
+
+// handleAgents is the "Connect an agent" page: the exact MCP configuration
+// for the common AI clients, ready to copy, plus the HTTP endpoint.
+func (u *UI) handleAgents(w http.ResponseWriter, r *http.Request) {
+	bin := u.BinaryPath
+	if bin == "" {
+		bin = "leetd"
+	}
+	cfgFlag := ""
+	if u.CfgPath != "" {
+		cfgFlag = `","--config","` + u.CfgPath
+	}
+	snippet := fmt.Sprintf(`{
+  "mcpServers": {
+    "leetoffice": {
+      "command": %q,
+      "args": ["mcp%s", "--actor", "agent:NAME-YOUR-AGENT"]
+    }
+  }
+}`, bin, cfgFlag)
+
+	var b strings.Builder
+	b.WriteString("<!DOCTYPE html><html><head><meta charset=utf-8><title>Agents — LeetOffice</title>" + pageStyle + "</head><body>")
+	b.WriteString("<nav><b>LeetOffice</b><a href='/'>docs</a> <a href='/memory'>memory</a> <a href='/agents'>agents</a></nav>")
+	b.WriteString("<h1>Connect an agent</h1>")
+	b.WriteString("<p class=meta>Any MCP-capable client — Claude Code, Codex, Hermes, Cursor — can work in this store. Every write is attributed to the actor you name here.</p>")
+
+	b.WriteString("<h3>Stdio (Claude Code, Codex, most clients)</h3>")
+	b.WriteString(`<p>Add this to your client's MCP configuration (<code>claude mcp add</code>, <code>.mcp.json</code>, or your client's settings):</p>`)
+	fmt.Fprintf(&b, `<pre id="snippet">%s</pre>`, html.EscapeString(snippet))
+	b.WriteString(`<p><button onclick="navigator.clipboard.writeText(document.getElementById('snippet').textContent).then(()=>this.textContent='copied ✓')">copy configuration</button></p>`)
+
+	b.WriteString("<h3>HTTP</h3>")
+	fmt.Fprintf(&b, "<p>Point an MCP HTTP client at <code>http://%s/mcp</code>.</p>", u.Config.Listen.HTTP)
+
+	b.WriteString("<h3>CLI (no MCP)</h3>")
+	b.WriteString("<p>Agents or scripts can also drive the store directly: <code>leetd doc</code>, <code>leetd audit</code>, <code>leetd search</code>-backed MCP via <code>leetd mcp</code>.</p>")
+
+	b.WriteString("</body></html>")
+	io.WriteString(w, b.String())
 }

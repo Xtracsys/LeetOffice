@@ -114,3 +114,18 @@ func TestConflictRendering(t *testing.T) {
 	}
 }
 
+
+func TestAgentsPage(t *testing.T) {
+	ui, _, _ := newUI(t)
+	ui.BinaryPath = "/usr/local/bin/leetd"
+	ui.CfgPath = "/tmp/node.json"
+	h := httptest.NewServer(ui.Handler())
+	defer h.Close()
+	page := get(t, h, "/agents")
+	if !strings.Contains(page, "mcpServers") || !strings.Contains(page, "/usr/local/bin/leetd") {
+		t.Fatalf("agents page missing snippet:\n%.400s", page)
+	}
+	if !strings.Contains(page, "copy configuration") {
+		t.Fatal("copy button missing")
+	}
+}

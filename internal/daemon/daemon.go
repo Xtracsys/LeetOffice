@@ -11,10 +11,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"leetoffice/internal/config"
@@ -28,10 +26,11 @@ import (
 
 // Node is one running LeetOffice node.
 type Node struct {
-	Cfg   *config.Config
-	Store *store.Store
-	Repo  *leetSync.Repo
-	MCP   *mcp.Server
+	Cfg     *config.Config
+	Store   *store.Store
+	Repo    *leetSync.Repo
+	MCP     *mcp.Server
+	cfgPath string
 }
 
 // Start opens the store and repo described by cfg.
@@ -53,6 +52,23 @@ func Start(cfg *config.Config) (*Node, error) {
 	mcpSrv := mcp.NewServer(s, repo, searchBackend(cfg, s), actor)
 	return &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv}, nil
 }
+
+// StartAtPath opens the node described by a config file path.
+func StartAtPath(cfgPath string) (*Node, *config.Config, error) {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	n, err := Start(cfg)
+	if err != nil {
+		return nil, cfg, err
+	}
+	n.cfgPath = cfgPath
+	return n, cfg, nil
+}
+
+// CfgFilePath reports where this node's config lives ("" if in-memory).
+func (n *Node) CfgFilePath() string { return n.cfgPath }
 
 // searchBackend picks semantic search when Ollama is up, else the always-on
 // keyword fallback (D17; RUNBOOK allows the stub as long as search returns).
@@ -80,47 +96,31 @@ func searchBackend(cfg *config.Config, s *store.Store) mcp.SearchFunc {
 // ServeHTTP mounts the human UI and the MCP HTTP surface on one handler.
 func (n *Node) ServeHTTP() http.Handler {
 	mux := http.NewServeMux()
-	ui := &httpui.UI{Store: n.Store, Repo: n.Repo, Config: n.Cfg}
+	bin, _ := os.Executable()
+	ui := &httpui.UI{Store: n.Store, Repo: n.Repo, Config: n.Cfg, BinaryPath: bin, CfgPath: n.cfgPath}
 	mux.Handle("/", ui.Handler())
 	mux.Handle("/mcp", n.MCP.Handler())
+	mux.HandleFunc("/service/install", handleServiceInstall(n.Cfg))
+	mux.HandleFunc("/service/uninstall", handleServiceUninstall())
 	return mux
 }
 
-// Run blocks running the node loops until SIGINT/SIGTERM.
-func (n *Node) Run(ctx context.Context) error {
-	// localhost HTTP (UI + MCP)
-	httpSrv := &http.Server{Addr: n.Cfg.Listen.HTTP, Handler: n.ServeHTTP()}
-	go func() {
-		log.Printf("http: listening on %s (UI + /mcp)", n.Cfg.Listen.HTTP)
-		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("http: %v", err)
-		}
-	}()
-
-	// node networking (mTLS git service, enrollment, mDNS) — coordinator role
+// StartLoops runs the background work a node owns: coordinator networking
+// (mTLS git service, enrollment, mDNS), short-cadence sync (D5), and the
+// automation jobs (M19). HTTP serving is the caller's concern — see
+// ListenAndServe, which can boot a node after first-run setup completes
+// without restarting the process.
+func (n *Node) StartLoops(ctx context.Context) error {
 	if n.Cfg.IsCoordinator() || strings.HasPrefix(n.Cfg.MainShare, "leet://") {
 		if err := n.StartNetworking(ctx); err != nil {
 			return err
 		}
 	}
-
-	// short-cadence sync (D5)
 	if n.Cfg.MainShare != "" {
 		go n.syncLoop(ctx)
 	}
-
-	// memory synthesis, digest, hygiene, monitor (D16, §7.3)
 	go n.jobsLoop(ctx)
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	select {
-	case <-stop:
-	case <-ctx.Done():
-	}
-	shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	return httpSrv.Shutdown(shutCtx)
+	return nil
 }
 
 func (n *Node) syncLoop(ctx context.Context) {

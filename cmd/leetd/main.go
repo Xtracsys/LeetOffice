@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -31,8 +32,13 @@ func main() {
 		return
 	}
 	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
+		// no arguments = run the node. First run opens the setup wizard;
+		// after that it's the always-on daemon.
+		if err := cmdServe(nil); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
 	}
 	var err error
 	switch os.Args[1] {
@@ -58,6 +64,12 @@ func main() {
 		err = cmdHygiene(os.Args[2:])
 	case "registry":
 		err = cmdRegistry(os.Args[2:])
+	case "install":
+		err = cmdInstall(os.Args[2:])
+	case "uninstall":
+		err = cmdUninstall(os.Args[2:])
+	case "mcp-install":
+		err = cmdMCPInstall(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -83,7 +95,12 @@ usage:
   leetd digest [--config FILE]                                         write today's digest
   leetd hygiene [--config FILE]                                        run doc hygiene
   leetd registry list|use <name> [--ok|--fail]                         skills & tools registry
+  leetd install [--config FILE]                                         register as always-on login service
+  leetd uninstall                                                       remove the login service
+  leetd mcp-install [--client claude] [--write]                         print/write MCP client config
   leetd check                                                          store self-test
+
+  running leetd with no arguments starts the node (first run opens the setup wizard).
 `)
 }
 
@@ -157,13 +174,16 @@ func or(s, fallback string) string {
 }
 
 func cmdServe(args []string) error {
-	cfg, _ := loadConfig(args)
-	node, err := daemon.Start(cfg)
-	if err != nil {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	cfgPath := fs.String("config", config.DefaultPath(), "config file")
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	fmt.Printf("leetd serving: UI on http://%s (MCP at /mcp and `leetd mcp`)\n", cfg.Listen.HTTP)
-	return node.Run(context.Background())
+	if _, err := os.Stat(*cfgPath); err != nil {
+		fmt.Println("no configuration yet — first-run wizard:")
+	}
+	fmt.Println("leetd: UI on http://127.0.0.1:7667 (Ctrl+C to stop)")
+	return daemon.ListenAndServe(context.Background(), *cfgPath)
 }
 
 func cmdSync(args []string) error {
@@ -459,4 +479,65 @@ func cmdRegistry(args []string) error {
 // the repo layout (skills/, tools/ at the workspace root).
 func repoRoot(cfg *config.Config) string {
 	return filepath.Join(cfg.StoreDir, "..")
+}
+
+func cmdInstall(args []string) error {
+	fs := flag.NewFlagSet("install", flag.ContinueOnError)
+	cfgPath := fs.String("config", config.DefaultPath(), "config file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		return fmt.Errorf("run the first-run wizard (just `leetd`) before installing the service: %w", err)
+	}
+	msg, err := daemon.InstallService(cfg)
+	fmt.Println(msg)
+	return err
+}
+
+func cmdUninstall(args []string) error {
+	msg, err := daemon.UninstallService()
+	fmt.Println(msg)
+	return err
+}
+
+// cmdMCPInstall prints (or writes) the MCP client configuration for AI agents.
+func cmdMCPInstall(args []string) error {
+	fs := flag.NewFlagSet("mcp-install", flag.ContinueOnError)
+	client := fs.String("client", "", "claude (writes .mcp.json in the current directory when combined with --write)")
+	write := fs.Bool("write", false, "write the config file instead of printing")
+	actor := fs.String("actor", "agent:hermes", "actor id for the agent")
+	cfgPath := fs.String("config", config.DefaultPath(), "config file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	bin, err := os.Executable()
+	if err != nil {
+		bin = "leetd"
+	}
+	mcpArgs := []string{"mcp", "--config", *cfgPath, "--actor", *actor}
+	cfgJSON, _ := json.MarshalIndent(map[string]any{
+		"mcpServers": map[string]any{
+			"leetoffice": map[string]any{"command": bin, "args": mcpArgs},
+		},
+	}, "", "  ")
+
+	if !*write {
+		fmt.Println(string(cfgJSON))
+		fmt.Println("\nClaude Code:  claude mcp add leetoffice -- " + bin + " mcp --actor " + *actor)
+		fmt.Println("HTTP:         point an MCP HTTP client at http://127.0.0.1:7667/mcp")
+		fmt.Println("\nadd --write to create .mcp.json here for project-scoped use")
+		return nil
+	}
+	switch *client {
+	case "claude":
+		if err := os.WriteFile(".mcp.json", append(cfgJSON, '\n'), 0o644); err != nil {
+			return err
+		}
+		fmt.Println("wrote .mcp.json in the current directory (project-scoped for Claude Code)")
+		return nil
+	default:
+		return fmt.Errorf("--write needs --client claude (other clients: copy the printed snippet)")
+	}
 }

@@ -40,6 +40,10 @@ type Config struct {
 	} `json:"ollama"`
 
 	IdentityDir string `json:"identity_dir"` // certs/keys (mTLS)
+
+	// Path is where this config was loaded from (not serialized); it lets the
+	// service installer and MCP snippets reference the real file location.
+	Path string `json:"-"`
 }
 
 // DefaultPath is the per-user config location.
@@ -100,6 +104,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	c.fillDefaults()
+	c.Path = path
 	return &c, nil
 }
 

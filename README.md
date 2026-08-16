@@ -34,47 +34,51 @@ v1 simplifications (documented, by design — see RUNBOOK §6 notes): the vector
 index is in-memory rather than SQLite, and the Electron app is a thin wrapper
 you run with `npm install && npm start` rather than a signed installer.
 
-## Quickstart
+## Quickstart — the easy way
 
-Build (pure Go, no cgo, no system git needed):
+Build once (pure Go, no cgo, no system git needed), then never touch a terminal again:
 
 ```sh
 go build -o leetd ./cmd/leetd
+./leetd            # that's it
 ```
 
-**Start a coordinator** (creates the main share, prints a one-time enrollment
-secret):
+The daemon opens a first-run wizard at `http://127.0.0.1:7667`:
+
+- **Start a new team** — this machine becomes the coordinator. The wizard shows
+  your one-time **invite code** to share out of band.
+- **Join a team** — coordinators on your network are auto-discovered via mDNS;
+  pick one (or type host:port), paste the invite code, done. Enrollment issues
+  your mTLS certificate and configures encrypted sync automatically.
+- **Just me** — a private local workspace; you can join a team later.
+
+Answer two questions and you land in the workspace. Then click **make
+always-on** on the home page (or run `leetd install`): LeetOffice registers as
+a login service (launchd on macOS, systemd on Linux) and survives reboots —
+no terminal, no manual startup, ever.
+
+**Agents:** the **agents** page in the UI shows your MCP configuration with a
+copy button (`leetd mcp-install` prints it; `leetd mcp-install --client claude
+--write` drops a `.mcp.json` in the current project). Claude Code, Codex,
+Hermes, or any MCP HTTP client against `http://127.0.0.1:7667/mcp`.
+
+## Quickstart — the CLI way (power users)
 
 ```sh
-./leetd init --coordinator --store ~/leetoffice/store --actor human:josh
+./leetd init --coordinator --store ~/leetoffice/store --actor human:josh && ./leetd serve
+# second machine:
+./leetd enroll --coordinator <host>:7443 --secret <invite-code>
+./leetd init --store ~/leetoffice/store --actor human:maya --share leet://<host>:7418/main.git
 ./leetd serve
 ```
 
-**Join from another machine** (or the same one, for testing):
+Nodes sync every 5 s over mutually authenticated TLS and auto-rejoin after any
+offline period: pull → block-merge → push, zero manual steps.
 
-```sh
-./leetd enroll --coordinator <host>:7443 --secret <the-secret>
-./leetd init --store ~/leetoffice/store --actor human:maya \
-            --share leet://<host>:7418/main.git
-./leetd serve
-```
-
-Nodes discover each other via mDNS (`_leetoffice._tcp`), sync every 5 s over
-mutually authenticated TLS, and auto-rejoin after any offline period: pull →
-block-merge → push, zero manual steps.
-
-**Humans:** open `http://127.0.0.1:7667` (or run the Electron app in `app/`).
-Editing a block updates the canonical embedded JSON and lands as a git commit
-attributed to your actor id. Opening `docs/<slug>.html` in any browser is the
-read-only fallback.
-
-**Agents** (Claude Code, Codex, Hermes, any MCP client):
-
-```json
-{ "mcpServers": { "leetoffice": { "command": "/path/to/leetd", "args": ["mcp", "--actor", "agent:hermes"] } } }
-```
-
-or point an MCP HTTP client at `http://127.0.0.1:7667/mcp`.
+**Humans:** `http://127.0.0.1:7667` (or the Electron app in `app/`). Editing a
+block updates the canonical embedded JSON and lands as a git commit attributed
+to your actor id. Opening `docs/<slug>.html` in any browser is the read-only
+fallback.
 
 ## Everyday commands
 
