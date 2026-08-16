@@ -4,6 +4,10 @@
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p dist
+# dist/ is authoritative: stale artifacts from previous builds (clean or
+# -dirty named) are removed here so a rebuild is ALWAYS just ./scripts/dist.sh
+# with no follow-up cleanup — manual rm globs have deleted fresh binaries.
+rm -f dist/leetd-* dist/checksums-*.txt
 VERSION="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
 # a dirty tree builds different bits than the commit it's named after, and
 # stale-name cleanup has deleted fresh binaries before — mark it instead
