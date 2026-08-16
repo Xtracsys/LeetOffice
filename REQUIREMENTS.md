@@ -7,7 +7,7 @@
 
 ## 1. Purpose & Vision
 
-A self-contained, **100% local** workspace framework that lets **multiple humans and multiple AI agents** (Hermes desktop, Hermes TUI, Claude Code, Codex, any MCP-capable client) work together in one shared store — with **unified team memory**, **full audit**, and **no cloud, no egress**.
+A self-contained, **100% local** workspace framework that lets **multiple humans and multiple AI agents** (Hermes desktop, Hermes TUI, Claude Code, Codex, any MCP-capable client) **work and communicate together** in one shared store — with unified team memory, full audit, and no cloud, no egress.
 
 Why: today a small team is held together by stitching Slack + Linear + Notion + HubSpot + Superhuman and gluing them with MCP/Zapier. LeetOffice is a complete redesign of that as a single local system where documents, tasks, and links live in one graph that both people and agents operate on.
 
@@ -99,6 +99,7 @@ Primary goals:
 | M22 | Packaging | **Profiles / config, installer, docs, GitHub release** | 🟡 Open |
 | M23 | Extensibility | **Skills & Tools Registry** — import/export, versioning, stability lifecycle | ✅ Decided |
 | M24 | Packaging | **Build Specification & Runbook** — buildable spec + AI build prompt | ✅ Decided |
+| M25 | Communication | **Team chat** — humans + agents converse in shared channels; messages are blocks | ✅ Decided |
 
 ## 6. Decisions Log
 
@@ -176,6 +177,13 @@ Ship in v1: **(a) team memory synthesis** (near-continuous → MEMORY.md), **(b)
 ### D18 — License (M22)
 **Apache-2.0.** Permissive (use/modify/sell/build on, even in proprietary products) with an **explicit patent grant** protecting adopters, plus GPLv3 compatibility and an enterprise-friendly posture. Attribution via a NOTICE file. Chosen over MIT for the patent protection and robustness.
 
+### D19 — Team chat / communication (M25)
+**Core feature.** Humans and agents communicate in the same workspace through **shared channels**. Design:
+- **Messages are blocks** in a channel document (type `channel`). Because blocks are the merge unit (D6), concurrent messages merge cleanly, are git-audited and attributed, and sync across nodes like any other content.
+- **Agents are first-class participants**: they can `list_channels`, `send_message`, and read messages via `read_doc`/`search` (channels are docs). This is the bidirectional human↔agent loop — the whole point of the project.
+- `RecentActors` surfaces who has been active in a workspace.
+- Channels can be linked (@-mentioned) into tasks, docs, and other items via the block link graph.
+
 ## 7. Open Questions
 
 | # | Module | Question | My lean |
@@ -187,7 +195,7 @@ Ship in v1: **(a) team memory synthesis** (near-continuous → MEMORY.md), **(b)
 | ~~O5~~ | M19 | ~~Which automations first?~~ | ✅ Resolved → D16 (memory + digest + hygiene) |
 | ~~O6~~ | M22 | ~~License for the open-source release?~~ | ✅ Resolved → D18 (Apache-2.0) |
 
-**All open questions resolved — 18 decisions, 24 modules.**
+**All open questions resolved — 19 decisions, 25 modules.**
 
 ## 8. Tool Surface (v1 starter set — grows via the Registry per D11/D12)
 
@@ -200,6 +208,8 @@ Ship in v1: **(a) team memory synthesis** (near-continuous → MEMORY.md), **(b)
 | `link` | Create a bidirectional link between two items |
 | `audit_query` | "What changed, when, and by whom" |
 | `diff` | Show difference between two versions |
+| `list_channels` | List team chat channels with activity (M25) |
+| `send_message` | Send a message to a team channel — auto-creates it (M25) |
 
 ## 9. Security Model
 

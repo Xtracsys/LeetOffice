@@ -156,8 +156,12 @@ The MCP server (`leet-mcp`) exposes these tools. All are **attributed + audited*
 | `link` | `{from_doc, from_block, to_doc, to_block?, label?}` | `{edge_id}` (bidirectional) |
 | `audit_query` | `{doc_id?, since?, actor?}` | `[{change, actor, when, commit_sha}]` |
 | `diff` | `{id, from_version, to_version}` | `{unified_diff, blocks_added, blocks_removed}` |
+| `list_channels` | `{}` | `[{channel, messages}]` — team chat channels + activity (M25) |
+| `send_message` | `{channel, text}` | `{message_id, channel}` — auto-creates the channel (M25) |
 
 **Tool identity:** each tool call carries an `actor` context (`agent:<id>` or `human:<id>`) injected by the daemon from the authenticated connection. This is what powers audit attribution.
+
+**Communication (M25):** team chat is a first-class surface. **Channels are documents** (type `channel`); **messages are blocks** within them. Because blocks are the merge unit (D6), concurrent messages merge cleanly and are git-audited + attributed like any content. Agents participate bidirectionally: `list_channels` + `send_message`, and read via `read_doc`/`search`. See `internal/chat`.
 
 ## 6. Node Protocol
 
