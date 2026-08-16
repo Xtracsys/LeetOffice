@@ -5,6 +5,8 @@
 // terminal card as the signature element.
 package httpui
 
+import "html"
+
 const xbCSS = `
 :root{
  --red:#d92a2a; --bg:#fff; --surface:#f8f5eb; --text:#111; --muted:#5b5b57; --faint:#8a8a85;
@@ -14,15 +16,21 @@ const xbCSS = `
  --mono:'JetBrains Mono',ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+html{scroll-padding-top:64px}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+header.topnav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.86);
+ -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.navwrap{max-width:1080px;margin:0 auto;padding:0 24px;height:56px;display:flex;align-items:center;gap:24px}
 a{color:inherit;text-decoration:none}
 code{font-family:var(--mono);font-size:.84em;background:var(--wash);border:1px solid var(--line);padding:.05em .35em;border-radius:3px}
 pre{font-family:var(--mono);font-size:.8rem;background:var(--term);color:var(--termtext);border:1px solid var(--termline);padding:1rem 1.1rem;overflow-x:auto;line-height:1.55;box-shadow:0 12px 40px rgba(17,17,17,.12)}
 .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
-nav.bar{display:flex;align-items:center;gap:22px;padding:0 0 18px;border-bottom:1px solid var(--line);margin-bottom:26px}
-nav.bar b{font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.18em}
-nav.bar a{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-nav.bar a:hover,nav.bar a.on{color:var(--text)}
+.navbrand{display:inline-flex;gap:9px;align-items:center;font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.18em}
+nav.bar{display:flex;align-items:center;gap:22px;flex:1}
+nav.bar a{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:4px 2px;border-bottom:2px solid transparent}
+nav.bar a:hover{color:var(--text)}
+nav.bar a.on{color:var(--text);border-bottom-color:var(--red)}
+.navside{margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--faint);white-space:nowrap}
 .eyebrow{display:inline-flex;gap:9px;align-items:center;font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);padding:6px 12px;margin-bottom:14px}
 .pulse{width:6px;height:6px;border-radius:50%;background:var(--red);animation:xb-pulse 2s infinite}
 @keyframes xb-pulse{0%,100%{opacity:1}50%{opacity:.35}}
@@ -56,7 +64,11 @@ textarea:focus,input:focus{outline:none;border-color:var(--text)}
 `
 
 // xbNav renders the shared top navigation. active marks the current page key.
-func xbNav(active string) string {
+// xbNav renders the persistent top menubar (XtracBox fixed-blur nav): brand,
+// the six pages with the red active marker, and the actor on the right so
+// attribution context is always visible. Every page — including the chat
+// shell — renders it via xbPage or xbHeader.
+func xbNav(active, actor string) string {
 	type l struct{ key, path, label string }
 	links := []l{
 		{"chat", "/", "Chat"},
@@ -66,7 +78,8 @@ func xbNav(active string) string {
 		{"agents", "/agents", "Agents"},
 		{"settings", "/settings", "Settings"},
 	}
-	out := `<span style="display:inline-flex;gap:9px;align-items:center"><span class="pulse"></span><b>LEETOFFICE</b></span>`
+	out := `<header class="topnav"><div class="navwrap">`
+	out += `<span class="navbrand"><span class="pulse"></span>LEETOFFICE</span><nav class="bar">`
 	for _, item := range links {
 		cls := ""
 		if item.key == active {
@@ -74,12 +87,21 @@ func xbNav(active string) string {
 		}
 		out += `<a href="` + item.path + `"` + cls + `>` + item.label + `</a>`
 	}
-	return `<nav class="bar">` + out + `</nav>`
+	out += `</nav>`
+	if actor != "" {
+		out += `<span class="navside">` + html.EscapeString(actor) + `</span>`
+	}
+	out += `</div></header>`
+	return out
 }
 
 func xbPage(title, active, body string) string {
+	return xbPageActor(title, active, body, "")
+}
+
+func xbPageActor(title, active, body, actor string) string {
 	return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>` + title + ` — LeetOffice</title><style>` + xbCSS + `</style></head>
-<body><div class="wrap" style="padding-top:26px">` + xbNav(active) + body + `</div></body></html>`
+<body>` + xbNav(active, actor) + `<div class="wrap" style="padding-top:26px">` + body + `</div></body></html>`
 }

@@ -72,7 +72,7 @@ func (u *UI) handleAudit(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(`<tr><td colspan="5" class="muted">No history yet.</td></tr>`)
 	}
 	b.WriteString("</table>")
-	_, _ = w.Write([]byte(xbPage("History", "audit", b.String())))
+	_, _ = w.Write([]byte(xbPageActor("History", "audit", b.String(), u.Config.Actor)))
 }
 
 // handleSettings is the control panel: node identity, team invite code
@@ -133,7 +133,7 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 <form method="post" action="/sync"><button class="ghost">sync now</button></form>
 </div></div>`)
 
-	_, _ = w.Write([]byte(xbPage("Settings", "settings", b.String())))
+	_, _ = w.Write([]byte(xbPageActor("Settings", "settings", b.String(), u.Config.Actor)))
 }
 
 func (u *UI) saveSettings(w http.ResponseWriter, r *http.Request) {

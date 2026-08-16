@@ -7,7 +7,6 @@ package httpui
 import (
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"os"
 	"path"
@@ -82,13 +81,13 @@ func (u *UI) handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 	b.WriteString("</table>")
 
-	b.WriteString(`<h3>New document</h3><form method="post" action="/doc/new">
+	b.WriteString(`<div class="card"><h3 style="margin-top:0">New document</h3><form method="post" action="/doc/new">
 <select name="type"><option>doc</option><option>task</option><option>contact</option><option>channel</option><option>company</option><option>email</option></select>
 <input name="slug" placeholder="slug" required size=14>
 <input name="title" placeholder="title" required size=32>
 <textarea name="body" placeholder="first paragraph (optional)"></textarea>
-<button>create</button></form>`)
-	_, _ = w.Write([]byte(xbPage("Agents", "agents", b.String())))
+<div class="row" style="margin-top:12px"><button>create</button></div></form></div>`)
+	_, _ = w.Write([]byte(xbPageActor("Docs", "docs", b.String(), u.Config.Actor)))
 }
 
 func linkTotal(d *store.Doc) int {
@@ -153,7 +152,7 @@ func (u *UI) renderDoc(w http.ResponseWriter, d *store.Doc) {
 	fmt.Fprintf(&b, "<h1>%s</h1><p class=meta>%s · v%d · updated %s · last editor <code>%s</code> · <a href='/audit'>history</a></p>",
 		html.EscapeString(d.Title), d.Type, d.Version, d.Updated, html.EscapeString(d.Audit.LastEditor))
 
-	b.WriteString(`<form method="post">`)
+	b.WriteString(`<div class="card"><form method="post">`)
 	for i := range d.Blocks {
 		blk := &d.Blocks[i]
 		if _, flagged := blk.Meta["conflict"]; flagged {
@@ -165,9 +164,8 @@ func (u *UI) renderDoc(w http.ResponseWriter, d *store.Doc) {
 	b.WriteString(`<h3>Add block</h3>
 <select name="new_type"><option>paragraph</option><option>heading</option><option>task-item</option><option>list-item</option><option>code</option><option>field</option><option>divider</option></select>
 <textarea name="new_content" placeholder="new block content"></textarea>
-<button>save</button></form>`)
-	b.WriteString("</body></html>")
-	io.WriteString(w, b.String())
+<div class="row" style="margin-top:12px"><button>save</button></div></form></div>`)
+	_, _ = w.Write([]byte(xbPageActor(d.Title, "docs", b.String(), u.Config.Actor)))
 }
 
 func (u *UI) saveEdits(w http.ResponseWriter, r *http.Request, d *store.Doc) {
@@ -226,7 +224,7 @@ func (u *UI) handleMemory(w http.ResponseWriter, r *http.Request) {
 	b.WriteString("<pre style='white-space:pre-wrap;margin-top:18px'>")
 	b.WriteString(html.EscapeString(string(raw)))
 	b.WriteString("</pre>")
-	_, _ = w.Write([]byte(xbPage("Memory", "memory", b.String())))
+	_, _ = w.Write([]byte(xbPageActor("Memory", "memory", b.String(), u.Config.Actor)))
 }
 
 func slugify(s string) string {
@@ -273,17 +271,16 @@ func (u *UI) handleAgents(w http.ResponseWriter, r *http.Request) {
 	b.WriteString("<h1>Connect an agent</h1>")
 	b.WriteString("<p class=meta>Any MCP-capable client — Claude Code, Codex, Hermes, Cursor — can work in this store. Every write is attributed to the actor you name here.</p>")
 
-	b.WriteString("<h3>Stdio (Claude Code, Codex, most clients)</h3>")
+	b.WriteString(`<div class="card"><h3 style="margin-top:0">Stdio (Claude Code, Codex, most clients)</h3>`)
 	b.WriteString(`<p>Add this to your client's MCP configuration (<code>claude mcp add</code>, <code>.mcp.json</code>, or your client's settings):</p>`)
 	fmt.Fprintf(&b, `<pre id="snippet">%s</pre>`, html.EscapeString(snippet))
 	b.WriteString(`<p><button onclick="navigator.clipboard.writeText(document.getElementById('snippet').textContent).then(()=>this.textContent='copied ✓')">copy configuration</button></p>`)
 
-	b.WriteString("<h3>HTTP</h3>")
+	b.WriteString(`</div><div class="card"><h3 style="margin-top:0">HTTP</h3>`)
 	fmt.Fprintf(&b, "<p>Point an MCP HTTP client at <code>http://%s/mcp</code>.</p>", u.Config.Listen.HTTP)
 
-	b.WriteString("<h3>CLI (no MCP)</h3>")
-	b.WriteString("<p>Agents or scripts can also drive the store directly: <code>leetd doc</code>, <code>leetd audit</code>, <code>leetd search</code>-backed MCP via <code>leetd mcp</code>.</p>")
+	b.WriteString(`</div><div class="card"><h3 style="margin-top:0">CLI (no MCP)</h3>`)
+	b.WriteString("<p>Agents or scripts can also drive the store directly: <code>leetd doc</code>, <code>leetd audit</code>, and the store-backed MCP via <code>leetd mcp</code>.</p></div>")
 
-	b.WriteString("</body></html>")
-	io.WriteString(w, b.String())
+	_, _ = w.Write([]byte(xbPageActor("Agents", "agents", b.String(), u.Config.Actor)))
 }

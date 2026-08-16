@@ -133,7 +133,18 @@ const chatCSS = `
  --mono:'JetBrains Mono',ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--sans);font-size:14px;color:var(--text);height:100vh;display:flex;overflow:hidden;background:var(--bg)}
+html,body{height:100%}
+body{font-family:var(--sans);font-size:14px;color:var(--text);display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+header.topnav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.86);
+ -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);flex-shrink:0}
+.navwrap{max-width:none;margin:0 auto;padding:0 20px;height:52px;display:flex;align-items:center;gap:24px}
+.navbrand{display:inline-flex;gap:9px;align-items:center;font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.18em;color:#111}
+nav.bar{display:flex;align-items:center;gap:22px;flex:1}
+nav.bar a{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:4px 2px;border-bottom:2px solid transparent;text-decoration:none}
+nav.bar a:hover{color:var(--text)}
+nav.bar a.on{color:var(--text);border-bottom-color:var(--red)}
+.navside{margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--faint);white-space:nowrap}
+.app{flex:1;display:flex;min-height:0}
 .rail{width:270px;background:var(--term);color:var(--termtext);display:flex;flex-direction:column;flex-shrink:0;border-right:1px solid var(--termline)}
 .rail .brand{padding:18px 20px;font-family:var(--mono);font-weight:700;letter-spacing:.18em;font-size:13px;border-bottom:1px solid var(--termline);display:flex;align-items:center;gap:10px}
 .pulse{width:6px;height:6px;border-radius:50%;background:var(--red);animation:xb-pulse 2s infinite}
@@ -181,6 +192,8 @@ func (u *UI) handleChat(w http.ResponseWriter, r *http.Request) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LeetOffice — Team</title><style>` + chatCSS + `</style></head>
 <body>
+` + xbNav("chat", u.Config.Actor) + `
+<div class="app">
 <nav class="rail">
   <div class="brand"><span class="pulse"></span>` + html.EscapeString(teamName(u)) + `<small>LOCAL · ENCRYPTED · YOURS</small></div>
   <h4>Channels</h4>
@@ -188,18 +201,17 @@ func (u *UI) handleChat(w http.ResponseWriter, r *http.Request) {
   <button class="new" id="newch" title="Create a channel">+ new channel</button>
   <h4>People &amp; agents</h4>
   <div class="people" id="people"></div>
-  <div class="foot"><a href="/docs">docs</a><a href="/audit">history</a><a href="/settings">settings</a><a href="/agents">agents</a></div>
+  <div class="foot"><a href="/settings">settings</a><a href="/audit">history</a></div>
 </nav>
 <main class="main">
-  <div class="topbar"><b id="chname"></b>
-    <a href="/docs">docs</a><a href="/memory">memory</a><a href="/audit">history</a><a href="/settings">settings</a><a href="/agents">agents</a>
-  </div>
+  <div class="topbar"><b id="chname"></b><span class="hint" id="members"></span></div>
   <div id="stream"></div>
   <form class="composer" id="composer">
     <textarea id="text" placeholder="Message — Enter sends, Shift+Enter adds a line" autofocus></textarea>
     <span class="hint" id="hint"></span><button id="send">Send</button>
   </form>
 </main>
+</div>
 <script>
 let current = localStorage.getItem('ch') || 'general';
 let lastID = '';
@@ -219,6 +231,8 @@ async function refresh(){
   pe.innerHTML = Object.entries(st.people||{}).sort((x,y)=> (y[1]==='online')-(x[1]==='online')).map(([p,s]) =>
     '<div class="person"><span class="dot '+s+'"></span>'+esc(p)+(p===st.me?' <span style="color:#8a93ab">(you)</span>':'')+'</div>').join('');
   document.getElementById('chname').textContent = current ? '#'+current : 'pick a channel';
+  const mem=document.getElementById('members');
+  if(mem){const n=(st.current&&st.current.messages)?st.current.messages.length:0;mem.textContent=n?n+' messages':''}
   const stream = document.getElementById('stream');
   const cur = st.current;
   if(cur){
