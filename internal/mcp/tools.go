@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"leetoffice/internal/chat"
 	"leetoffice/internal/store"
 	leetSync "leetoffice/internal/sync"
 )
@@ -252,11 +253,45 @@ func (s *Server) toolDiff(args map[string]any) (any, error) {
 	}
 	res := leetSync.DiffDocs(prev, d)
 	return map[string]any{
-		"unified_diff":    res.Unified,
-		"blocks_added":    res.BlocksAdded,
-		"blocks_removed":  res.BlocksRemoved,
-		"note":            note,
-		"from_version":    prev.Version,
-		"to_version":      d.Version,
+		"unified_diff":   res.Unified,
+		"blocks_added":   res.BlocksAdded,
+		"blocks_removed": res.BlocksRemoved,
+		"note":           note,
+		"from_version":   prev.Version,
+		"to_version":     d.Version,
+	}, nil
+}
+
+// --- chat (§5 surface extension: agents are teammates, not just editors) ----
+
+func (s *Server) toolListChannels(args map[string]any) (any, error) {
+	chans, err := chat.Channels(s.store)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(chans))
+	for _, d := range chans {
+		msgs := chat.Messages(d)
+		out = append(out, map[string]any{
+			"channel": d.Slug, "messages": len(msgs),
+			"last_activity": chat.LastActivity(d),
+		})
+	}
+	return out, nil
+}
+
+func (s *Server) toolSendMessage(args map[string]any) (any, error) {
+	channel := argStr(args, "channel")
+	text := argStr(args, "text")
+	if channel == "" || text == "" {
+		return nil, fmt.Errorf("channel and text are required")
+	}
+	msg, sha, err := chat.Send(s.store, s.repo, s.actor, channel, text)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"message_id": msg.ID, "channel": chat.Normalize(channel),
+		"at": msg.At, "commit_sha": sha,
 	}, nil
 }

@@ -112,8 +112,12 @@ func TestSetupWizardFlow(t *testing.T) {
 	}
 	// the daemon now serves the workspace (handler swapped, no restart)
 	home := get(t, h, "/")
-	if !strings.Contains(home, "LeetOffice") || !strings.Contains(home, "make always-on") {
-		t.Fatalf("node UI not live after wizard:\n%.300s", home)
+	if !strings.Contains(home, "Channels") || !strings.Contains(home, "/api/state") {
+		t.Fatalf("chat shell not live after wizard:\n%.300s", home)
+	}
+	docs := get(t, h, "/docs")
+	if !strings.Contains(docs, "make always-on") {
+		t.Fatalf("docs page missing service button:\n%.300s", docs)
 	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil || cfg.Actor != "human:josh" {

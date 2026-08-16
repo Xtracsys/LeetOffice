@@ -236,3 +236,65 @@ func contains(list []string, sub string) bool {
 func readFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
+
+// TestTeamChatAcrossNodes: a human and an agent on different nodes send to the
+// same channel concurrently; sync keeps BOTH messages (block-level merge makes
+// chat lossless) and both nodes see the full conversation.
+func TestTeamChatAcrossNodes(t *testing.T) {
+	_, human, agent, sHuman, sAgent, rHuman, rAgent := fixture(t)
+
+	// human posts from its node; agent posts from its node before pulling
+	hmsg := callTool(t, human, "send_message", map[string]any{
+		"channel": "general", "text": "standup in five"})
+	if _, err := rHuman.Sync("origin", "human:josh"); err != nil {
+		t.Fatalf("human sync: %v", err)
+	}
+	amsg := callTool(t, agent, "send_message", map[string]any{
+		"channel": "general", "text": "on my way — brining the notes"})
+	if _, err := rAgent.Sync("origin", "agent:hermes"); err != nil {
+		t.Fatalf("agent sync: %v", err)
+	}
+	if hmsg["commit_sha"] == "" || amsg["commit_sha"] == "" {
+		t.Fatalf("messages not committed: %#v %#v", hmsg, amsg)
+	}
+
+	// human catches up, then both nodes have the full conversation
+	if _, err := rHuman.Sync("origin", "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	for name, s := range map[string]*store.Store{"human": sHuman, "agent": sAgent} {
+		d, err := s.Load("general")
+		if err != nil {
+			t.Fatalf("%s node lost the channel: %v", name, err)
+		}
+		var texts []string
+		for _, m := range chatMessages(d) {
+			texts = append(texts, m.Text)
+		}
+		if !contains(texts, "standup in five") || !contains(texts, "on my way") {
+			t.Fatalf("%s node missing messages: %v", name, texts)
+		}
+	}
+
+	// chat is attributed: audit shows both speakers
+	entries, _ := rAgent.AuditLog("channels/general.html", time.Time{}, "", 20)
+	actors := map[string]bool{}
+	for _, e := range entries {
+		actors[e.Actor] = true
+	}
+	if !actors["human:josh"] || !actors["agent:hermes"] {
+		t.Fatalf("chat attribution missing: %v", actors)
+	}
+}
+
+func chatMessages(d *store.Doc) []struct{ Author, Text string } {
+	var out []struct{ Author, Text string }
+	for i := range d.Blocks {
+		b := &d.Blocks[i]
+		if b.Meta["kind"] == "message" {
+			author, _ := b.Meta["author"].(string)
+			out = append(out, struct{ Author, Text string }{author, b.Content})
+		}
+	}
+	return out
+}

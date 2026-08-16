@@ -21,12 +21,12 @@ import (
 // Hit is one search result (rag provides a matching shape; kept here so the
 // mcp package does not depend on rag).
 type Hit struct {
-	DocID    string  `json:"doc_id"`
-	BlockID  string  `json:"block_id"`
-	Slug     string  `json:"slug"`
-	Title    string  `json:"title"`
-	Snippet  string  `json:"snippet"`
-	Score    float64 `json:"score"`
+	DocID   string  `json:"doc_id"`
+	BlockID string  `json:"block_id"`
+	Slug    string  `json:"slug"`
+	Title   string  `json:"title"`
+	Snippet string  `json:"snippet"`
+	Score   float64 `json:"score"`
 }
 
 // SearchFunc is the pluggable search backend (rag.Search satisfies it).
@@ -205,6 +205,10 @@ func (s *Server) invoke(name string, args map[string]any) (any, error) {
 		return s.toolAuditQuery(args)
 	case "diff":
 		return s.toolDiff(args)
+	case "list_channels":
+		return s.toolListChannels(args)
+	case "send_message":
+		return s.toolSendMessage(args)
 	default:
 		return nil, fmt.Errorf("unknown tool %q", name)
 	}
@@ -226,7 +230,7 @@ func toolDescriptors() []map[string]any {
 		{"name": "search", "description": "Find notes/tasks/links across the store",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
 				"query": str("search text"), "type": str("doc type filter"),
-				"tags": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"tags":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"limit": map[string]any{"type": "integer", "default": 10}}}},
 		{"name": "read_doc", "description": "Read a note or document (by slug or id)",
 			"inputSchema": map[string]any{"type": "object", "properties": prop("id_or_slug", "block_id"), "required": []string{"id_or_slug"}}},
@@ -246,6 +250,12 @@ func toolDescriptors() []map[string]any {
 				"doc_id": str("filter by doc"), "since": str("RFC3339 timestamp"),
 				"actor": str("human:<id> or agent:<id>"),
 				"limit": map[string]any{"type": "integer"}}}},
+		{"name": "list_channels", "description": "List team chat channels with activity",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
+		{"name": "send_message", "description": "Send a message to a team channel (auto-creates it)",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
+				"channel": str("channel name, e.g. general or ops"), "text": str("message body")},
+				"required": []string{"channel", "text"}}},
 		{"name": "diff", "description": "Show the difference between two versions",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
 				"id_or_slug": str("document"), "from_version": map[string]any{"type": "integer"},

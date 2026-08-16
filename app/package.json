@@ -6,9 +6,34 @@
   "license": "Apache-2.0",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dev.leetoffice.app",
+    "productName": "LeetOffice",
+    "files": ["main.js", "package.json"],
+    "extraResources": [
+      {
+        "from": "../dist/leetd-${os}-${arch}",
+        "to": "leetd",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dmg", "zip"]
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Office"
+    },
+    "win": {
+      "target": ["nsis"]
+    }
   }
 }

@@ -16,6 +16,34 @@ agents get MCP.
   [`RUNBOOK.md`](RUNBOOK.md) (the build order — this repo is that build).
 - License: Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)).
 
+## Team chat
+
+The workspace home (`http://127.0.0.1:7667`) is a team chat in the shape of
+Teams/ZCode: a channel rail with people & agent presence, a message stream,
+and a composer. Under the hood a channel is just a `channel`-type document and
+each message an attributed, timestamped block — so chat inherits everything
+the store guarantees: git-durable history, per-message attribution
+(`human:<id>` / `agent:<id>`), full-text search, offline-first catch-up on
+rejoin, and lossless concurrent sends (block-level merge keeps both).
+
+Agents are teammates in the same channels: `send_message` and `list_channels`
+are MCP tools, so Claude Code / Codex / Hermes converse where the humans do.
+Docs stay one click away (`docs` in the top bar); share a doc by mentioning
+its slug.
+
+## Installing on other systems
+
+- **Any machine, no toolchain:** copy the right binary from `dist/` (built by
+  `./scripts/dist.sh` for macOS arm64/amd64, Linux amd64/arm64, Windows amd64),
+  run it once, and the first-run wizard does the rest — team coordinators are
+  auto-discovered on the LAN, joining needs one invite code.
+- **Desktop app:** `cd app && npm run dist` builds a `.dmg` / `AppImage` /
+  Windows installer that bundles `leetd` and auto-starts it — double-click and
+  you're in.
+- **From source:** `go build -o leetd ./cmd/leetd` (pure Go, no cgo).
+- **macOS/Linux service:** the UI's "make always-on" button (or `leetd install`)
+  registers a launchd agent / systemd user unit.
+
 ## What's implemented
 
 | Phase | Module | Status |
@@ -27,7 +55,7 @@ agents get MCP.
 | 5 | Memory synthesis (`MEMORY.md`), daily digest, doc hygiene + monitor notices | ✅ |
 | 6 | RAG: keyword fallback (always on) + Ollama embeddings (optional), memory-boosted ranking, encrypted fields excluded | ✅ |
 | 7 | Skills & tools registry: manifest format, import/export, auto-promote at N clean uses | ✅ |
-| 8 | Human client: daemon-served editor UI + Electron wrapper (`app/`), browser read-only fallback | ✅ |
+| 8 | Human client: Teams-style chat shell + editor UI + Electron wrapper (`app/`), browser read-only fallback | ✅ |
 | 9 | Packaging: single binary, Apache-2.0, runbook-in-repo | ✅ |
 
 v1 simplifications (documented, by design — see RUNBOOK §6 notes): the vector

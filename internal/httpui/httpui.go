@@ -32,12 +32,15 @@ type UI struct {
 // Handler builds the HTTP routes.
 func (u *UI) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", u.handleHome)
+	mux.HandleFunc("/", u.handleChat)
+	mux.HandleFunc("/docs", u.handleHome)
 	mux.HandleFunc("/doc/new", u.handleNew)
 	mux.HandleFunc("/doc/", u.handleDoc)
 	mux.HandleFunc("/sync", u.handleSync)
 	mux.HandleFunc("/memory", u.handleMemory)
 	mux.HandleFunc("/agents", u.handleAgents)
+	mux.HandleFunc("/api/state", u.handleAPIState)
+	mux.HandleFunc("/api/send", u.handleAPISend)
 	return mux
 }
 
@@ -55,7 +58,7 @@ code{background:#f4f4f4;padding:0 .3rem;border-radius:4px}
 </style>`
 
 func (u *UI) handleHome(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	if r.URL.Path != "/" && r.URL.Path != "/docs" {
 		http.NotFound(w, r)
 		return
 	}
@@ -66,7 +69,7 @@ func (u *UI) handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html><html><head><meta charset=utf-8><title>LeetOffice</title>" + pageStyle + "</head><body><nav><b>LeetOffice</b>")
-	fmt.Fprintf(&b, "<a href='/'>docs</a> <a href='/memory'>memory</a> <a href='/agents'>agents</a> ")
+	fmt.Fprintf(&b, "<a href='/'>chat</a> <a href='/docs'>docs</a> <a href='/memory'>memory</a> <a href='/agents'>agents</a> ")
 	fmt.Fprintf(&b, "<a href='#' onclick=\"fetch('/sync',{method:'POST'}).then(()=>location.reload());return false\">sync now</a></nav>")
 
 	fmt.Fprintf(&b, "<p class=meta>node %s · role %s · store %s · actor %s</p>",
@@ -269,7 +272,7 @@ func (u *UI) handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html><html><head><meta charset=utf-8><title>Agents — LeetOffice</title>" + pageStyle + "</head><body>")
-	b.WriteString("<nav><b>LeetOffice</b><a href='/'>docs</a> <a href='/memory'>memory</a> <a href='/agents'>agents</a></nav>")
+	b.WriteString("<nav><b>LeetOffice</b><a href='/'>chat</a> <a href='/docs'>docs</a> <a href='/memory'>memory</a> <a href='/agents'>agents</a></nav>")
 	b.WriteString("<h1>Connect an agent</h1>")
 	b.WriteString("<p class=meta>Any MCP-capable client — Claude Code, Codex, Hermes, Cursor — can work in this store. Every write is attributed to the actor you name here.</p>")
 

@@ -48,7 +48,7 @@ func TestHomeListsDocs(t *testing.T) {
 	}
 	h := httptest.NewServer(ui.Handler())
 	defer h.Close()
-	page := get(t, h, "/")
+	page := get(t, h, "/docs")
 	if !strings.Contains(page, "spec") || !strings.Contains(page, "Spec") {
 		t.Fatalf("home page missing doc row:\n%s", page)
 	}
@@ -114,7 +114,6 @@ func TestConflictRendering(t *testing.T) {
 	}
 }
 
-
 func TestAgentsPage(t *testing.T) {
 	ui, _, _ := newUI(t)
 	ui.BinaryPath = "/usr/local/bin/leetd"
@@ -128,4 +127,44 @@ func TestAgentsPage(t *testing.T) {
 	if !strings.Contains(page, "copy configuration") {
 		t.Fatal("copy button missing")
 	}
+}
+
+func TestChatShellAndAPI(t *testing.T) {
+	ui, st, _ := newUI(t)
+	h := httptest.NewServer(ui.Handler())
+	defer h.Close()
+
+	// the shell is the home page
+	page := get(t, h, "/")
+	if !strings.Contains(page, "Channels") || !strings.Contains(page, "composer") ||
+		!strings.Contains(page, "/api/state") {
+		t.Fatalf("chat shell wrong:\n%.300s", page)
+	}
+
+	// send via the API exactly as the composer does
+	res, err := h.Client().Post(h.URL+"/api/send", "application/json",
+		strings.NewReader(`{"channel":"general","text":"hello from the UI"}`))
+	if err != nil || res.StatusCode != 200 {
+		t.Fatalf("api send: %v %v", err, res)
+	}
+	res.Body.Close()
+
+	// state shows the channel, the message, and the sender's presence
+	state := get(t, h, "/api/state?channel=general")
+	if !strings.Contains(state, `"slug":"general"`) ||
+		!strings.Contains(state, "hello from the UI") ||
+		!strings.Contains(state, `"human:josh":"`) {
+		t.Fatalf("api state: %s", state)
+	}
+	d, err := st.Load("general")
+	if err != nil || d.Type != store.TypeChannel {
+		t.Fatalf("channel doc: %v", err)
+	}
+	// empty messages are rejected
+	res2, _ := h.Client().Post(h.URL+"/api/send", "application/json",
+		strings.NewReader(`{"channel":"general","text":"  "}`))
+	if res2.StatusCode != 400 {
+		t.Fatalf("empty accepted: %d", res2.StatusCode)
+	}
+	res2.Body.Close()
 }

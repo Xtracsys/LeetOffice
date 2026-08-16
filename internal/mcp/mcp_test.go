@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"leetoffice/internal/chat"
 	"leetoffice/internal/store"
 	leetSync "leetoffice/internal/sync"
 )
@@ -93,14 +95,14 @@ func TestHandshakeAndToolsList(t *testing.T) {
 	}
 	list := call(t, srv, "tools/list", nil)
 	tools, _ := list["tools"].([]any)
-	if len(tools) != 7 {
-		t.Fatalf("expected 7 tools, got %d", len(tools))
+	if len(tools) != 9 {
+		t.Fatalf("expected 9 tools, got %d", len(tools))
 	}
 	names := map[string]bool{}
 	for _, tl := range tools {
 		names[tl.(map[string]any)["name"].(string)] = true
 	}
-	for _, want := range []string{"search", "read_doc", "write_doc", "create_task", "link", "audit_query", "diff"} {
+	for _, want := range []string{"search", "read_doc", "write_doc", "create_task", "link", "audit_query", "diff", "list_channels", "send_message"} {
 		if !names[want] {
 			t.Fatalf("tool %q missing", want)
 		}
@@ -256,7 +258,7 @@ func TestHTTPHandler(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Result.Tools) != 7 {
+	if len(res.Result.Tools) != 9 {
 		t.Fatalf("HTTP tools/list: %d tools", len(res.Result.Tools))
 	}
 
@@ -272,3 +274,39 @@ func TestHTTPHandler(t *testing.T) {
 }
 
 var _ = filepath.Join
+
+func TestAgentChat(t *testing.T) {
+	srv, st, repo := newTestServer(t)
+
+	// agent joins the conversation
+	res := callTool(t, srv, "send_message", map[string]any{
+		"channel": "#ops", "text": "imaging run complete"}).(map[string]any)
+	if res["commit_sha"] == "" || res["channel"] != "ops" {
+		t.Fatalf("send_message: %#v", res)
+	}
+	chans := callTool(t, srv, "list_channels", map[string]any{}).([]any)
+	if len(chans) != 1 || chans[0].(map[string]any)["messages"].(float64) != 1 {
+		t.Fatalf("list_channels: %#v", chans)
+	}
+
+	// the message lives in the store, attributed, and committed
+	d, err := st.Load("ops")
+	if err != nil || d.Type != store.TypeChannel {
+		t.Fatalf("channel doc: %v", err)
+	}
+	msgs := chat.Messages(d)
+	if len(msgs) != 1 || msgs[0].Author != "agent:hermes" || msgs[0].Text != "imaging run complete" {
+		t.Fatalf("messages: %#v", msgs)
+	}
+	entries, _ := repo.AuditLog("channels/ops.html", time.Time{}, "agent:hermes", 5)
+	if len(entries) == 0 {
+		t.Fatal("chat message not attributed in audit log")
+	}
+
+	// empty messages are rejected
+	res2 := call(t, srv, "tools/call", map[string]any{
+		"name": "send_message", "arguments": map[string]any{"channel": "ops", "text": "  "}})
+	if res2["isError"] != true {
+		t.Fatalf("empty message accepted: %#v", res2)
+	}
+}
