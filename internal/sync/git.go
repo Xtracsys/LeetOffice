@@ -200,8 +200,8 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 			return nil, rerr
 		}
 		if remoteHash == plumbing.ZeroHash {
-			err := r.push(remoteName)
-			res.Pushed = err == nil
+			pushed, err := r.push(remoteName)
+			res.Pushed = pushed
 			return res, err
 		}
 		if err := r.wt.Checkout(&git.CheckoutOptions{
@@ -219,15 +219,13 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 		return nil, err
 	}
 	if remoteHash == plumbing.ZeroHash { // reachable but empty → we seed it
-		err = r.push(remoteName)
-		res.Pushed = err == nil
+		pushed, err := r.push(remoteName)
+		res.Pushed = pushed
 		return res, err
 	}
 	if remoteHash == head.Hash() {
-		// up to date; just try to push local-only commits
-		err = r.push(remoteName)
-		res.Pushed = err == nil
-		return res, err
+		// fully up to date — nothing to pull or push
+		return res, nil
 	}
 
 	base, err := r.mergeBase(head.Hash(), remoteHash)
@@ -236,8 +234,8 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	}
 
 	if base == remoteHash { // we're ahead only → just push
-		err = r.push(remoteName)
-		res.Pushed = err == nil
+		pushed, err := r.push(remoteName)
+		res.Pushed = pushed
 		return res, err
 	}
 
@@ -260,8 +258,9 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	if err != nil {
 		return res, err
 	}
-	err = r.push(remoteName)
-	res.Pushed = err == nil
+	_, perr := r.push(remoteName)
+	res.Pushed = perr == nil
+	err = perr
 	final, _ := r.repo.Head()
 	if final != nil {
 		res.HeadCommit = final.Hash().String()
@@ -269,15 +268,21 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	return res, nil
 }
 
-func (r *Repo) push(remoteName string) error {
-	err := r.repo.Push(&git.PushOptions{
+// push uploads local commits; pushed=false when the remote already had
+// everything (go-git's already-up-to-date), so idle cycles never masquerade
+// as activity in logs and SyncResults.
+func (r *Repo) push(remoteName string) (pushed bool, err error) {
+	err = r.repo.Push(&git.PushOptions{
 		RemoteName: remoteName,
 		RefSpecs:   []config.RefSpec{"+refs/heads/" + DefaultBranch + ":refs/heads/" + DefaultBranch},
 	})
-	if err == nil || errors.Is(err, git.NoErrAlreadyUpToDate) {
-		return nil
+	if errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return false, nil
 	}
-	return err
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (r *Repo) mergeBase(a, b plumbing.Hash) (plumbing.Hash, error) {

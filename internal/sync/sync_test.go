@@ -32,7 +32,7 @@ func twoNodeFixture(t *testing.T) (bare string, a, b *Repo, sa, sb *store.Store)
 	if _, err := a.CommitAll("human:josh", "seed store"); err != nil {
 		t.Fatalf("commit seed: %v", err)
 	}
-	if err := a.push("origin"); err != nil {
+	if _, err := a.push("origin"); err != nil {
 		t.Fatalf("push seed: %v", err)
 	}
 
@@ -238,3 +238,37 @@ func (r *Repo) save(t *testing.T, d *store.Doc) error {
 }
 
 var _ = os.Getenv
+
+// TestIdleSyncReportsNoActivity: once both nodes are converged, a sync cycle
+// must report nothing pushed/pulled — the console once logged
+// "pushed=true" every 5 seconds on idle coordinators because an
+// already-up-to-date push was mislabeled as activity.
+func TestIdleSyncReportsNoActivity(t *testing.T) {
+	_, a, b, sa, _ := twoNodeFixture(t)
+
+	da, _ := sa.Load("spec")
+	da.AddParagraph("settled change")
+	if err := sa.Save(da, "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.CommitAll("human:josh", "settle"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Sync("origin", "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Sync("origin", "human:maya"); err != nil {
+		t.Fatal(err)
+	}
+
+	// both nodes fully converged: idle cycles must be quiet
+	for i := 0; i < 3; i++ {
+		res, err := a.Sync("origin", "human:josh")
+		if err != nil {
+			t.Fatalf("idle sync: %v", err)
+		}
+		if res.Pulled || res.Pushed || res.Merged {
+			t.Fatalf("idle cycle reported activity: %+v", res)
+		}
+	}
+}

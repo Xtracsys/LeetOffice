@@ -41,6 +41,7 @@ func ListenAndServe(ctx context.Context, cfgPath string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	quietKnownNoise()
 	d := &Daemon{cfgPath: cfgPath, ctx: ctx}
 	addr := config.Default("", "").Listen.HTTP
 
