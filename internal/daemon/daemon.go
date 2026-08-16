@@ -6,6 +6,7 @@ package daemon
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"net/http"
@@ -185,15 +186,15 @@ func (n *Node) jobsLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-synthT.C:
-			head, err := n.Repo.HeadHash()
-			if err != nil || head == lastSynth {
+			fp := n.storeFingerprint()
+			if fp == lastSynth {
 				break
 			}
 			if err := memory.Synthesize(n.Store, n.Repo, n.Cfg.Actor); err != nil {
 				log.Printf("memory: %v", err)
 				break
 			}
-			lastSynth = head
+			lastSynth = fp
 		case <-digestT.C:
 			day := time.Now().UTC().Format("2006-01-02")
 			if day == lastDigestDay {
@@ -218,6 +219,22 @@ func (n *Node) jobsLoop(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// storeFingerprint hashes the documents themselves, NOT git HEAD: synthesis
+// changes HEAD (it commits MEMORY.md), so keying on HEAD made the job
+// re-trigger on its own output every tick. Keying on doc state means we only
+// re-synthesize when the underlying store actually changed.
+func (n *Node) storeFingerprint() string {
+	docs, err := n.Store.List()
+	if err != nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, d := range docs {
+		fmt.Fprintf(&b, "%s:%d:%s;", d.ID, d.Version, d.Updated)
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(b.String())))
 }
 
 // writeNotice maintains NOTICE.md in the store — the monitor's human-facing
