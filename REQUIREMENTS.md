@@ -12,11 +12,11 @@ A self-contained, **100% local** workspace framework that lets **multiple humans
 Why: today a small team is held together by stitching Slack + Linear + Notion + HubSpot + Superhuman and gluing them with MCP/Zapier. LeetOffice is a complete redesign of that as a single local system where documents, tasks, and links live in one graph that both people and agents operate on.
 
 Primary goals:
-1. **Boost Xtracsys productivity** — one local workspace for docs, tasks, notes, and agents.
+1. **Boost team productivity** — one local workspace for docs, tasks, notes, and agents.
 2. **Reusable** across the day job and other projects.
 3. **Street credibility** in the builder community — a cleanly scoped, open, local-first agent workspace.
 
-**Strategic note:** The *framework* is open and generic. Anything tied to the Xtracsys strategic plan stays **private** and is never part of the open-source tool surface.
+**Design note:** The *framework* is open and generic. Anything tied to a specific organization's internal plans stays **private** and is never part of the open-source tool surface.
 
 ## 2. Non-Negotiable Principles
 
@@ -150,7 +150,7 @@ The framework ships a **local registry** for agent **tools** and **skills**:
 - **Import/export** — each tool/skill bundles into one unit (folder/single file) that can be moved between nodes, backed up, or ported to another project.
 - **Versioning** — every tool/skill carries a version; upgrades are git-committed, audited, and reversible.
 - **Stability lifecycle** — `experimental` → `stable` (→ `deprecated`). New tools/skills start experimental; promotion to stable happens only after successful real-world use. Agents rely on stable; experimental is flagged.
-- Purpose: the framework **grows from real use** — import a tool, dogfood it on Xtracsys work, promote it to stable once proven, then it's shared team-wide.
+- Purpose: the framework **grows from real use** — import a tool, dogfood it on real work, promote it to stable once proven, then it's shared team-wide.
 
 ### D12 — Stability gate (M23)
 **Promoted-on-proof.** Experimental tools/skills are fully usable, and the framework **auto-promotes them to stable after N clean uses** (configurable, default ~10) with no error or revert. Leans on the audit + monitor to catch failures. The promotion threshold is configurable per tool/skill.
@@ -169,7 +169,7 @@ Goal: fully reproducible, community-credible — a stranger with only these docs
 **Block-level links.** Links attach to a specific *block* inside a document (a paragraph, checklist item, field) rather than whole documents. This is what makes the graph genuinely powerful — pointing at the exact idea, not the whole page. Requires a careful block-aware JSON schema (defined precisely in BUILD_SPEC).
 
 ### D16 — v1 automations (M19)
-Ship in v1: **(a) team memory synthesis** (near-continuous → MEMORY.md), **(b) daily digest** ("what changed" note from the audit trail), and **(c) doc hygiene** (scan for broken block-links, stale notes, unindexed files). XtracBox-specific automation ships later through the Skills & Tools Registry.
+Ship in v1: **(a) team memory synthesis** (near-continuous → MEMORY.md), **(b) daily digest** ("what changed" note from the audit trail), and **(c) doc hygiene** (scan for broken block-links, stale notes, unindexed files). Organization-specific automation ships later through the Skills & Tools Registry.
 
 ### D17 — Semantic search / RAG scope (M16)
 **Both, memory-boosted.** Index the whole store (all documents + blocks) for semantic retrieval via local Ollama embeddings, but rank `MEMORY.md` and per-domain summary notes higher in results. Agents find deep doc content *and* curated team memory surfaces first. Fully local.
@@ -188,7 +188,7 @@ Ship in v1: **(a) team memory synthesis** (near-continuous → MEMORY.md), **(b)
 
 | # | Module | Question | My lean |
 |---|--------|----------|---------|
-| ~~O1~~ | M11 | ~~Tool surface — which Xtracsys tools beyond starter set?~~ | ✅ Resolved by D11/D12 (grows via registry + dogfooding) |
+| ~~O1~~ | M11 | ~~Tool surface — which extra tools beyond the starter set?~~ | ✅ Resolved by D11/D12 (grows via registry + dogfooding) |
 | ~~O2~~ | M2 | ~~Link graph granularity — note vs block?~~ | ✅ Resolved → D15 (block-level) |
 | ~~O3~~ | M16 | ~~RAG scope — whole store, or per-domain notes?~~ | ✅ Resolved → D17 (whole store, memory-boosted) |
 | ~~O4~~ | M17 | ~~Human client — Obsidian or built-in UI?~~ | ✅ Resolved → D14 (bundled app + browser fallback) |

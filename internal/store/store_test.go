@@ -8,7 +8,7 @@ import (
 )
 
 func TestDocRoundTrip(t *testing.T) {
-	d := NewDoc(TypeDoc, "imaging-runbook", "XtracBox Imaging Runbook")
+	d := NewDoc(TypeDoc, "imaging-runbook", "Site Imaging Runbook")
 	d.AddParagraph("Boot the target from the Ventoy USB.")
 	b, err := d.Bytes()
 	if err != nil {

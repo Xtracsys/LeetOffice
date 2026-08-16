@@ -310,7 +310,7 @@ func cmdAudit(args []string) error {
 
 // runCheck is the Phase 1 store self-test (write → parse → render → rewrite).
 func runCheck() error {
-	d := store.NewDoc(store.TypeDoc, "imaging-runbook", "XtracBox Imaging Runbook")
+	d := store.NewDoc(store.TypeDoc, "imaging-runbook", "Site Imaging Runbook")
 	d.AddParagraph("Boot the target from the Ventoy USB.")
 	b, err := d.Bytes()
 	if err != nil {
@@ -563,5 +563,5 @@ var (
 
 func cmdVersion() {
 	fmt.Printf("leetoffice %s (%s) %s/%s\n", version, commit, runtime.GOOS, runtime.GOARCH)
-	fmt.Println("https://github.com/leetoffice/leetoffice · Apache-2.0 · 100% local, no egress")
+	fmt.Println("https://github.com/Xtracsys/LeetOffice · Apache-2.0 · 100% local, no egress")
 }

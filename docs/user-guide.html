@@ -85,14 +85,14 @@ footer{border-top:1px solid var(--line);margin-top:40px;padding-top:16px;font-fa
 <!-- ================================================== 01 INSTALL -->
 <section class="panel on" id="panel-install">
  <h2>One line (macOS &amp; Linux)</h2>
- <pre>curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh</pre>
+ <pre>curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh</pre>
  <p>The script detects your platform, downloads the right binary, <b>verifies its SHA-256
  checksum</b>, installs to <code>~/.local/bin</code>, and tells you what to do next.
  If that folder isn't on your <span class="mono">PATH</span>, it shows the exact line to add.</p>
 
  <h2>From a GitHub release (any platform, no script)</h2>
  <ol>
-  <li>Open the latest <span class="mono">github.com/leetoffice/leetoffice/releases</span></li>
+  <li>Open the latest <span class="mono">github.com/Xtracsys/LeetOffice/releases</span></li>
   <li>Download your binary:
    <table>
    <tr><th>macOS (Apple Silicon)</th><td><code>leetd-VERSION-darwin-arm64</code></td></tr>
@@ -109,7 +109,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;padding-top:16px;font-fa
  Signing/notarization is on the roadmap — see the README's "What it isn't (yet)".</div>
 
  <h2>From source</h2>
- <pre>git clone https://github.com/leetoffice/leetoffice &amp;&amp; cd leetoffice
+ <pre>git clone https://github.com/Xtracsys/LeetOffice &amp;&amp; cd leetoffice
 go build -o leetd ./cmd/leetd   <span class="c"># pure Go, no cgo, no system deps</span></pre>
  <p>Check what you built:</p>
  <pre>leetd version   <span class="c"># e.g. leetoffice v0.1.0 (8abe240) darwin/arm64</span></pre>
@@ -280,7 +280,7 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
      <code>~/.config/leetoffice</code>, <code>~/.leetoffice-identity</code>.</td></tr>
  </table>
  <h2>Where to get help</h2>
- <p>Issues: <span class="mono">github.com/leetoffice/leetoffice/issues</span> — the bug
+ <p>Issues: <span class="mono">github.com/Xtracsys/LeetOffice/issues</span> — the bug
  template asks for <code>leetd version</code>, your setup, and console output; that's
  usually enough to diagnose fast. Security: see SECURITY.md (private advisories).</p>
 </section>
@@ -307,7 +307,7 @@ document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click'
   "tags": ["guide", "install", "handbook"],
   "blocks": [
     {"id": "blk_install", "type": "heading", "content": "01 Install", "level": 2},
-    {"id": "blk_i1", "type": "paragraph", "content": "One line on macOS/Linux: curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh — platform detection, SHA-256 verification, installs to ~/.local/bin. Or download a release binary (darwin/arm64, darwin/amd64, linux/amd64, linux/arm64, windows/amd64), verify checksums, place on PATH. From source: go build -o leetd ./cmd/leetd."},
+    {"id": "blk_i1", "type": "paragraph", "content": "One line on macOS/Linux: curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh — platform detection, SHA-256 verification, installs to ~/.local/bin. Or download a release binary (darwin/arm64, darwin/amd64, linux/amd64, linux/arm64, windows/amd64), verify checksums, place on PATH. From source: go build -o leetd ./cmd/leetd."},
     {"id": "blk_firstrun", "type": "heading", "content": "02 First run", "level": 2},
     {"id": "blk_f1", "type": "paragraph", "content": "Run leetd with no arguments; open http://127.0.0.1:7667. Wizard: start a team (coordinator + invite code), join a team (auto-discovered coordinator + invite code), or just me. Lands on a living workspace: welcome doc, #general greeting, starter channels."},
     {"id": "blk_teams", "type": "heading", "content": "03 Build a team", "level": 2},

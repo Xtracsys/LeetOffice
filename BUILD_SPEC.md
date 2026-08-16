@@ -90,10 +90,10 @@ The JSON lives in a `<script type="application/json" id="leet-doc">` inside each
   "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "type": "doc | task | contact | channel | company | email | memory",
   "slug": "imaging-runbook",
-  "title": "XtracBox Imaging Runbook",
+  "title": "Site Imaging Runbook",
   "version": 128,
   "updated": "2026-08-15T12:34:56Z",
-  "tags": ["imaging", "xtracbox"],
+  "tags": ["imaging", "ops"],
   "blocks": [
     {
       "id": "blk_1a2b3c4d",
@@ -129,7 +129,7 @@ Updated by the daemon (and by doc hygiene). One row per document — the human/a
 ```markdown
 | slug | type | title | updated | tags | link-count |
 |------|------|-------|---------|------|-----------|
-| imaging-runbook | doc | XtracBox Imaging Runbook | 2026-08-15 | imaging | 12 |
+| imaging-runbook | doc | Site Imaging Runbook | 2026-08-15 | imaging | 12 |
 | prd-v1 | doc | PRD v1 | 2026-08-14 | product | 34 |
 ```
 
@@ -248,7 +248,7 @@ A cron job writes `_audit/DIGEST-YYYY-MM-DD.md` from the audit trail: what chang
 Each tool/skill is a folder under `tools/` or `skills/`:
 
 ```
-skills/xtracbox-imaging/
+skills/site-imaging/
 ├── manifest.json
 ├── SKILL.md          # the procedural instructions (Hermes-skill compatible)
 └── assets/           # optional templates/scripts
@@ -257,7 +257,7 @@ skills/xtracbox-imaging/
 `manifest.json`:
 ```json
 {
-  "name": "xtracbox-imaging",
+  "name": "site-imaging",
   "kind": "skill",
   "version": "1.2.0",
   "stability": "experimental | stable | deprecated",

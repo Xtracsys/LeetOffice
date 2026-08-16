@@ -46,7 +46,7 @@ jobs:
             ### Install
 
             ```sh
-            curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh   # macOS / Linux
+            curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh   # macOS / Linux
             ```
 
             Or grab a binary below (darwin/arm64, darwin/amd64, linux/amd64,

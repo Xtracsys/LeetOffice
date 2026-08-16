@@ -1,7 +1,7 @@
 #!/bin/sh
 # LeetOffice one-line installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh
 #
 # (or from a checkout: sh install.sh [--version vX.Y.Z])
 # Downloads the right static binary for this OS/arch, verifies its checksum,
@@ -36,10 +36,10 @@ esac
 # --- resolve version ---------------------------------------------------------
 if [ -z "$VERSION" ]; then
   if command -v curl >/dev/null 2>&1; then
-    VERSION="$(curl -fsSL https://api.github.com/repos/leetoffice/leetoffice/releases/latest \
+    VERSION="$(curl -fsSL https://api.github.com/repos/Xtracsys/LeetOffice/releases/latest \
       | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
   elif command -v wget >/dev/null 2>&1; then
-    VERSION="$(wget -qO- https://api.github.com/repos/leetoffice/leetoffice/releases/latest \
+    VERSION="$(wget -qO- https://api.github.com/repos/Xtracsys/LeetOffice/releases/latest \
       | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
   fi
   if [ -z "$VERSION" ]; then
@@ -48,7 +48,7 @@ if [ -z "$VERSION" ]; then
   fi
 fi
 
-BASE="https://github.com/leetoffice/leetoffice/releases/download/${VERSION}"
+BASE="https://github.com/Xtracsys/LeetOffice/releases/download/${VERSION}"
 NAME="leetd-${VERSION#v}-${os}-${arch}"
 if [ "$os" = "windows" ]; then NAME="${NAME}.exe"; fi
 

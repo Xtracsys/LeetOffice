@@ -1,8 +1,7 @@
-// The XtracBox design system (from xtracbox.com's own CSS), applied to every
-// LeetOffice interface: paper background, warm surface, near-black ink, one
-// signal red, JetBrains Mono for labels (system fallbacks — the product never
-// fetches remote fonts, P1 no-egress), hairline borders, and the dark
-// terminal card as the signature element.
+// The shared design system, applied to every LeetOffice interface: paper
+// background, warm surface, near-black ink, one signal red, monospace labels
+// (system stacks — the product never fetches remote fonts, P1 no-egress),
+// hairline borders, and a dark terminal card as the signature element.
 package httpui
 
 import "html"
@@ -64,7 +63,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--text)}
 `
 
 // xbNav renders the shared top navigation. active marks the current page key.
-// xbNav renders the persistent top menubar (XtracBox fixed-blur nav): brand,
+// xbNav renders the persistent top menubar (fixed, backdrop blur): brand,
 // the six pages with the red active marker, and the actor on the right so
 // attribution context is always visible. Every page — including the chat
 // shell — renders it via xbPage or xbHeader.

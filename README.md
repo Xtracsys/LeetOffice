@@ -7,7 +7,7 @@
 Chat, docs, tasks, and links in a single store — full audit, encrypted sync,
 zero cloud, zero egress.
 
-[![CI](https://github.com/leetoffice/leetoffice/actions/workflows/ci.yml/badge.svg)](https://github.com/leetoffice/leetoffice/actions/workflows/ci.yml)
+[![CI](https://github.com/Xtracsys/LeetOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/Xtracsys/LeetOffice/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-red)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-111?logo=go)](go.mod)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20·%20Linux%20·%20Windows-111)](#install)
@@ -61,13 +61,13 @@ write attributed to the agent, merge-safe against human edits.
 **macOS / Linux (one line):**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/leetoffice/leetoffice/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh
 ```
 
 **Homebrew** (once the tap ships): `brew install leetoffice/tap/leetd`
 
 **Any platform, no script:** grab a binary from
-[releases](https://github.com/leetoffice/leetoffice/releases) —
+[releases](https://github.com/Xtracsys/LeetOffice/releases) —
 darwin/arm64 · darwin/amd64 · linux/amd64 · linux/arm64 · windows/amd64 —
 verify with `shasum -a 256 -c checksums-*.txt`, run it. Static, ~13 MB,
 zero dependencies (pure Go, no cgo).
