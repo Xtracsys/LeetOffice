@@ -16,12 +16,20 @@ jobs:
           go-version-file: go.mod
       - name: Full test suite (Linux has real networking)
         run: go test ./...
-      - name: Build all platforms
+      - name: Build all platforms (traced)
+        shell: bash
         run: |
-          # binaries must be named by TAG (v0.1.0 → 0.1.0) — that is what
-          # install.sh downloads; dist.sh alone names by commit hash.
+          set -x
+          uname -a; go version; command -v shasum sha256sum git sed
           VER="${GITHUB_REF_NAME#v}"
+          echo "VER=$VER RELEASE=$GITHUB_REF_NAME"
           RELEASE="${GITHUB_REF_NAME}" ./scripts/dist.sh
+          ls -l dist
+      - name: Rename to tag + checksums
+        shell: bash
+        run: |
+          set -x
+          VER="${GITHUB_REF_NAME#v}"
           cd dist
           for f in leetd-*; do
             mv "$f" "$(printf '%s' "$f" | sed "s/^leetd-[^-]*-/leetd-${VER}-/")"
