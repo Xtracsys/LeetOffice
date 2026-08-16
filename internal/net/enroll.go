@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -24,27 +25,30 @@ type enrollRequest struct {
 }
 
 type enrollResponse struct {
-	Cert string `json:"cert"`
-	CA   string `json:"ca"`
+	Cert    string `json:"cert"`
+	CA      string `json:"ca"`
+	GitAddr string `json:"git_addr,omitempty"` // host:port of the leet:// git service
 }
 
 // EnrollmentServer is the coordinator side of the trust gate (§6.3): it
 // exchanges CA-signed node certificates for the one-time team enrollment
 // secret. A wrong secret gets 403 and no certificate.
 type EnrollmentServer struct {
-	srv *http.Server
-	ln  net.Listener
+	srv     *http.Server
+	ln      net.Listener
+	gitPort int // advertised in responses so joiners sync to the right service
 }
 
 // NewEnrollmentServer starts listening for enrollment requests on addr
 // (use port 0 for an ephemeral port), presenting the coordinator's
 // certificate via tlsConf (Identity.EnrollmentTLSConfig).
-func NewEnrollmentServer(ca *CA, secret, addr string, tlsConf *tls.Config) (*EnrollmentServer, error) {
+func NewEnrollmentServer(ca *CA, secret, addr string, tlsConf *tls.Config, gitPort int) (*EnrollmentServer, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	es := &EnrollmentServer{ln: ln, srv: &http.Server{Handler: enrollHandler(ca, secret), TLSConfig: tlsConf}}
+	es := &EnrollmentServer{ln: ln, gitPort: gitPort,
+		srv: &http.Server{Handler: enrollHandler(ca, secret, gitPort), TLSConfig: tlsConf}}
 	go func() { _ = es.srv.ServeTLS(ln, "", "") }()
 	return es, nil
 }
@@ -55,7 +59,7 @@ func (s *EnrollmentServer) Addr() net.Addr { return s.ln.Addr() }
 // Close stops the enrollment server.
 func (s *EnrollmentServer) Close() error { return s.srv.Close() }
 
-func enrollHandler(ca *CA, secret string) http.Handler {
+func enrollHandler(ca *CA, secret string, gitPort int) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/enroll", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -78,10 +82,22 @@ func enrollHandler(ca *CA, secret string) http.Handler {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		// Tell the joiner where git sync actually lives. The host is taken
+		// from the request — whatever name the joiner dialed is by
+		// construction reachable from their machine.
+		gitAddr := ""
+		if gitPort > 0 {
+			host := r.Host
+			if h, _, err := net.SplitHostPort(r.Host); err == nil {
+				host = h
+			}
+			gitAddr = net.JoinHostPort(host, strconv.Itoa(gitPort))
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(enrollResponse{
-			Cert: string(certPEM),
-			CA:   string(ca.CertPEM()),
+			Cert:    string(certPEM),
+			CA:      string(ca.CertPEM()),
+			GitAddr: gitAddr,
 		})
 	})
 	return mux
@@ -92,14 +108,14 @@ func enrollHandler(ca *CA, secret string) http.Handler {
 // identity. The coordinator's certificate must chain to the CA it returns;
 // when caFingerprint is non-empty it must also match exactly (out-of-band
 // pin of the coordinator's CA). Trust-on-first-use otherwise.
-func Enroll(addr, nodeID, secret, caFingerprint string) (*Identity, error) {
+func Enroll(addr, nodeID, secret, caFingerprint string) (*Identity, string, error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	csrPEM, err := newCSRPEM(priv, nodeID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// InsecureSkipVerify is compensated below: the response carries the
 	// team CA, and the peer we actually talked to must chain to it.
@@ -109,7 +125,7 @@ func Enroll(addr, nodeID, secret, caFingerprint string) (*Identity, error) {
 	body, _ := json.Marshal(enrollRequest{CSR: string(csrPEM), Secret: secret})
 	resp, err := client.Post("https://"+addr+"/enroll", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("net: enrollment connection: %w", err)
+		return nil, "", fmt.Errorf("net: enrollment connection: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -120,26 +136,26 @@ func Enroll(addr, nodeID, secret, caFingerprint string) (*Identity, error) {
 		} else {
 			fmt.Fprintf(&msg, " (HTTP %d)", resp.StatusCode)
 		}
-		return nil, errors.New(msg.String())
+		return nil, "", errors.New(msg.String())
 	}
 	var out enrollResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	certBlock, _ := pem.Decode([]byte(out.Cert))
 	caBlock, _ := pem.Decode([]byte(out.CA))
 	if certBlock == nil || caBlock == nil {
-		return nil, errors.New("net: enrollment response missing PEM")
+		return nil, "", errors.New("net: enrollment response missing PEM")
 	}
 	caCert, err := x509.ParseCertificate(caBlock.Bytes)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if caFingerprint != "" && Fingerprint(caCert) != caFingerprint {
-		return nil, errors.New("net: coordinator CA fingerprint mismatch")
+		return nil, "", errors.New("net: coordinator CA fingerprint mismatch")
 	}
 	if len(resp.TLS.PeerCertificates) == 0 {
-		return nil, errors.New("net: no coordinator certificate presented")
+		return nil, "", errors.New("net: no coordinator certificate presented")
 	}
 	pool := x509.NewCertPool()
 	pool.AddCert(caCert)
@@ -149,20 +165,20 @@ func Enroll(addr, nodeID, secret, caFingerprint string) (*Identity, error) {
 			x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth,
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("net: coordinator not signed by the returned CA: %w", err)
+		return nil, "", fmt.Errorf("net: coordinator not signed by the returned CA: %w", err)
 	}
 	id, err := newIdentity(priv, certBlock.Bytes, caBlock.Bytes)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// The certificate must bind the key we just generated.
 	if !pubEqual(id.cert.PublicKey, pub) {
-		return nil, errors.New("net: issued certificate does not match our key")
+		return nil, "", errors.New("net: issued certificate does not match our key")
 	}
 	if id.NodeID() != nodeID {
-		return nil, fmt.Errorf("net: issued certificate has node id %q, want %q", id.NodeID(), nodeID)
+		return nil, "", fmt.Errorf("net: issued certificate has node id %q, want %q", id.NodeID(), nodeID)
 	}
-	return id, nil
+	return id, out.GitAddr, nil
 }
 
 // newCSRPEM builds the enrollment CSR for nodeID (SAN = node id).

@@ -34,14 +34,19 @@ func shareFixture(t *testing.T) (dir, shares string, srv *GitServer, client *Ide
 	t.Cleanup(func() { _ = srv.Close() })
 
 	const secret = "one-time-team-secret"
-	es, err := NewEnrollmentServer(ca, secret, "127.0.0.1:0", coord.EnrollmentTLSConfig())
+	es, err := NewEnrollmentServer(ca, secret, "127.0.0.1:0", coord.EnrollmentTLSConfig(), 7418)
 	if err != nil {
 		t.Fatalf("NewEnrollmentServer: %v", err)
 	}
 	t.Cleanup(func() { _ = es.Close() })
-	client, err = Enroll(es.Addr().String(), "node-b", secret, ca.Fingerprint())
+	client, gitAddr, err := Enroll(es.Addr().String(), "node-b", secret, ca.Fingerprint())
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
+	}
+	// the joiner must learn the GIT service address, not the enrollment
+	// port it just dialed — the two-port mixup that orphaned joined nodes
+	if gitAddr != "127.0.0.1:7418" {
+		t.Fatalf("coordinator advertised git addr %q, want 127.0.0.1:7418 (enrollment host + git port, NOT the enrollment port)", gitAddr)
 	}
 	return dir, shares, srv, client
 }

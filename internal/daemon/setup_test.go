@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -53,8 +54,20 @@ func TestJoinTeamEnrollsAndConfigures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// the git service runs on its OWN port (here ephemeral, unlike enroll) —
+	// exactly the production topology that once made joined nodes sync
+	// against the enrollment port and end up isolated
+	gitRoot := filepath.Join(dir, "shares")
+	if err := os.MkdirAll(gitRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitSrv, err := leetNet.ServeGit("127.0.0.1:0", coord.ServerTLSConfig(), gitRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gitSrv.Close()
 	enr, err := leetNet.NewEnrollmentServer(ca, "one-time-secret", "127.0.0.1:0",
-		coord.EnrollmentTLSConfig())
+		coord.EnrollmentTLSConfig(), gitSrv.Addr().(*net.TCPAddr).Port)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,8 +82,12 @@ func TestJoinTeamEnrollsAndConfigures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(cfg.MainShare, "leet://"+enr.Addr().String()) {
-		t.Fatalf("share = %s", cfg.MainShare)
+	// REGRESSION (two-port bug): the share must point at the GIT service,
+	// never the enrollment port we dialed to join.
+	wantShare := "leet://" + gitSrv.Addr().String() + "/main.git"
+	if cfg.MainShare != wantShare {
+		t.Fatalf("share = %s, want %s (git port %v, not enrollment port %v)",
+			cfg.MainShare, wantShare, gitSrv.Addr(), enr.Addr())
 	}
 	if _, err := leetNet.LoadIdentity(cfg.IdentityDir); err != nil {
 		t.Fatalf("identity not saved: %v", err)

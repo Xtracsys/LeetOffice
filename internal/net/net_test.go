@@ -144,14 +144,14 @@ func TestEnrollment(t *testing.T) {
 	ca, coord := teamFixture(t, dir)
 	const secret = "one-time-team-secret"
 
-	es, err := NewEnrollmentServer(ca, secret, "127.0.0.1:0", coord.EnrollmentTLSConfig())
+	es, err := NewEnrollmentServer(ca, secret, "127.0.0.1:0", coord.EnrollmentTLSConfig(), 7418)
 	if err != nil {
 		t.Fatalf("NewEnrollmentServer: %v", err)
 	}
 	defer es.Close()
 
 	t.Run("correct secret issues a team certificate", func(t *testing.T) {
-		id, err := Enroll(es.Addr().String(), "node-b", secret, ca.Fingerprint())
+		id, _, err := Enroll(es.Addr().String(), "node-b", secret, ca.Fingerprint())
 		if err != nil {
 			t.Fatalf("Enroll: %v", err)
 		}
@@ -166,14 +166,14 @@ func TestEnrollment(t *testing.T) {
 	})
 
 	t.Run("wrong secret is rejected", func(t *testing.T) {
-		_, err := Enroll(es.Addr().String(), "node-c", "not-the-secret", ca.Fingerprint())
+		_, _, err := Enroll(es.Addr().String(), "node-c", "not-the-secret", ca.Fingerprint())
 		if err == nil || !strings.Contains(err.Error(), "wrong enrollment secret") {
 			t.Fatalf("wrong secret not rejected: %v", err)
 		}
 	})
 
 	t.Run("wrong CA pin is rejected", func(t *testing.T) {
-		_, err := Enroll(es.Addr().String(), "node-d", secret, "0f00d00f")
+		_, _, err := Enroll(es.Addr().String(), "node-d", secret, "0f00d00f")
 		if err == nil || !strings.Contains(err.Error(), "fingerprint mismatch") {
 			t.Fatalf("mismatched pin not rejected: %v", err)
 		}

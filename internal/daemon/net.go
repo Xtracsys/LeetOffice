@@ -59,14 +59,16 @@ func (n *Node) serveCoordinator(ctx context.Context) error {
 	log.Printf("net: git service on %s (mTLS, bare root %s)", gitSrv.Addr(), bareRoot)
 
 	// enrollment endpoint (D8): one-time secret → node cert
+	enrollPort := 0
 	if n.Cfg.EnrollmentSecret != "" {
 		enr, err := leetNet.NewEnrollmentServer(ca, n.Cfg.EnrollmentSecret,
-			n.Cfg.Listen.Enroll, coord.EnrollmentTLSConfig())
+			n.Cfg.Listen.Enroll, coord.EnrollmentTLSConfig(), portOf(gitSrv.Addr()))
 		if err != nil {
 			return fmt.Errorf("enrollment: %w", err)
 		}
 		log.Printf("net: enrollment on %s — nodes run `leetd enroll --coordinator %s --secret <secret>`",
 			enr.Addr(), enrollAddr(enr.Addr(), n.Cfg))
+		enrollPort = portOf(enr.Addr())
 		go func() {
 			<-ctx.Done()
 			_ = enr.Close()
@@ -74,7 +76,8 @@ func (n *Node) serveCoordinator(ctx context.Context) error {
 	}
 
 	// mDNS announce (§6.2)
-	ann, err := leetNet.Announce(n.Cfg.NodeID, "coordinator", ca.Fingerprint(), "", portOf(gitSrv.Addr()))
+	ann, err := leetNet.Announce(n.Cfg.NodeID, "coordinator", ca.Fingerprint(), "",
+		portOf(gitSrv.Addr()), enrollPort)
 	if err != nil {
 		log.Printf("net: mDNS announce failed (continuing): %v", err)
 	} else {
@@ -94,7 +97,7 @@ func (n *Node) startClient() error {
 		}
 		leetNet.InstallTransport(id.TLSConfig())
 	}
-	ann, err := leetNet.Announce(n.Cfg.NodeID, "client", "", "", 0)
+	ann, err := leetNet.Announce(n.Cfg.NodeID, "client", "", "", 0, 0)
 	if err != nil {
 		log.Printf("net: mDNS announce failed (continuing): %v", err)
 		return nil

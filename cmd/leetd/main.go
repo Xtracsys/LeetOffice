@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -344,15 +345,23 @@ func cmdEnroll(args []string) error {
 	if *coordinator == "" || *secret == "" {
 		return fmt.Errorf("enroll needs --coordinator host:port and --secret")
 	}
-	id, err := leetNet.Enroll(*coordinator, cfg.NodeID, *secret, "")
+	id, gitAddr, err := leetNet.Enroll(*coordinator, cfg.NodeID, *secret, "")
 	if err != nil {
 		return fmt.Errorf("enrollment rejected: %w", err)
 	}
 	if err := id.Save(cfg.IdentityDir); err != nil {
 		return err
 	}
-	// the coordinator serves the main share over the mTLS git transport
-	cfg.MainShare = fmt.Sprintf("%s://%s/main.git", leetNet.Scheme, *coordinator)
+	// the share URL must target the git service (the coordinator tells us
+	// where it is), not the enrollment port we just used
+	if gitAddr == "" {
+		host, _, splitErr := net.SplitHostPort(*coordinator)
+		if splitErr != nil {
+			host = *coordinator
+		}
+		gitAddr = net.JoinHostPort(host, fmt.Sprint(leetNet.DefaultPort))
+	}
+	cfg.MainShare = fmt.Sprintf("%s://%s/main.git", leetNet.Scheme, gitAddr)
 	if err := cfg.Save(*cfgPath); err != nil {
 		return err
 	}

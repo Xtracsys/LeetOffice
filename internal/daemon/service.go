@@ -189,7 +189,7 @@ func cfgPathFor(cfg *config.Config) string {
 type builder struct{ b []byte }
 
 func (b *builder) Write(p []byte) (int, error) { b.b = append(b.b, p...); return len(p), nil }
-func (b *builder) String() string             { return string(b.b) }
+func (b *builder) String() string              { return string(b.b) }
 
 // --- HTTP endpoints (one-click from the UI) -----------------------------------
 

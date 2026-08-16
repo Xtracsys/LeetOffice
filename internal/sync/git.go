@@ -394,7 +394,7 @@ func (r *Repo) mergeInto(remoteHash, base plumbing.Hash, actor string) ([]store.
 
 	var conflicts []store.Conflict
 	take := map[string]plumbing.Hash{} // path → version to write
-	written := map[string]bool{}        // path → already written by block merge
+	written := map[string]bool{}       // path → already written by block merge
 
 	for path, oh := range oursFiles {
 		th, both := theirsFiles[path]

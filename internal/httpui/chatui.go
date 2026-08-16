@@ -245,5 +245,17 @@ func teamName(u *UI) string {
 	if name == "" {
 		name = u.Config.NodeID
 	}
-	return name + "'s team"
+	// When this node is joined to a team, say whose — a local-name label
+	// here once made a joined node look like an isolated one.
+	if share := u.Config.MainShare; share != "" {
+		if at := strings.LastIndex(share, "@"); at >= 0 {
+			return "team @ " + share[at+1:]
+		}
+		if host := strings.TrimPrefix(strings.TrimPrefix(share, "leet://"), "file://"); host != "" {
+			if i := strings.IndexAny(host, "/"); i > 0 {
+				return "team @ " + host[:i]
+			}
+		}
+	}
+	return name + "'s team (local)"
 }

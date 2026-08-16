@@ -17,24 +17,29 @@ const ServiceName = "_leetoffice._tcp"
 // role, and the fingerprint with which to pin its certificate.
 type Peer struct {
 	NodeID      string
-	Addr        string // host:port
+	Addr        string // host:git-port (the leet:// sync endpoint)
 	Role        string
 	Fingerprint string
+	EnrollPort  int // where a joiner enrolls (coordinators only)
 }
 
 // peerTXT assembles the mDNS TXT records for an announcement: node_id,
 // role, and the certificate fingerprint (§6.2).
-func peerTXT(nodeID, role, fingerprint string) []string {
-	return []string{
+func peerTXT(nodeID, role, fingerprint string, enrollPort int) []string {
+	fields := []string{
 		"node_id=" + nodeID,
 		"role=" + role,
 		"fp=" + fingerprint,
 	}
+	if enrollPort > 0 {
+		fields = append(fields, "enroll="+strconv.Itoa(enrollPort))
+	}
+	return fields
 }
 
 // parsePeerTXT extracts the LeetOffice TXT fields. An empty nodeID means
 // the records did not come from a LeetOffice node.
-func parsePeerTXT(fields []string) (nodeID, role, fingerprint string) {
+func parsePeerTXT(fields []string) (nodeID, role, fingerprint string, enrollPort int) {
 	for _, f := range fields {
 		switch {
 		case strings.HasPrefix(f, "node_id="):
@@ -43,9 +48,11 @@ func parsePeerTXT(fields []string) (nodeID, role, fingerprint string) {
 			role = strings.TrimPrefix(f, "role=")
 		case strings.HasPrefix(f, "fp="):
 			fingerprint = strings.TrimPrefix(f, "fp=")
+		case strings.HasPrefix(f, "enroll="):
+			enrollPort, _ = strconv.Atoi(strings.TrimPrefix(f, "enroll="))
 		}
 	}
-	return nodeID, role, fingerprint
+	return nodeID, role, fingerprint, enrollPort
 }
 
 // Announcer broadcasts this node over mDNS until Shutdown.
@@ -56,9 +63,9 @@ type Announcer struct {
 // Announce starts announcing _leetoffice._tcp with the node's TXT records.
 // host defaults to the machine hostname; port is the node's leet:// sync
 // port (GitServer.Addr's port).
-func Announce(nodeID, role, fingerprint, host string, port int) (*Announcer, error) {
+func Announce(nodeID, role, fingerprint, host string, port, enrollPort int) (*Announcer, error) {
 	svc, err := mdns.NewMDNSService(nodeID, ServiceName, "", host, port, nil,
-		peerTXT(nodeID, role, fingerprint))
+		peerTXT(nodeID, role, fingerprint, enrollPort))
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +114,7 @@ func DiscoverPeers(timeout time.Duration) ([]Peer, error) {
 }
 
 func peerFromEntry(e *mdns.ServiceEntry) (Peer, bool) {
-	nodeID, role, fp := parsePeerTXT(e.InfoFields)
+	nodeID, role, fp, enrollPort := parsePeerTXT(e.InfoFields)
 	if nodeID == "" {
 		return Peer{}, false
 	}
@@ -123,5 +130,6 @@ func peerFromEntry(e *mdns.ServiceEntry) (Peer, bool) {
 		Addr:        net.JoinHostPort(ip.String(), strconv.Itoa(e.Port)),
 		Role:        role,
 		Fingerprint: fp,
+		EnrollPort:  enrollPort,
 	}, true
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -123,14 +124,24 @@ func JoinTeam(cfgPath, storeDir, actor, coordinator, secret string) error {
 	cfg := config.Default(storeDir, actor)
 	_, identity := wizardPaths(storeDir)
 	cfg.IdentityDir = identity
-	id, err := leetNet.Enroll(coordinator, cfg.NodeID, secret, "")
+	id, gitAddr, err := leetNet.Enroll(coordinator, cfg.NodeID, secret, "")
 	if err != nil {
 		return fmt.Errorf("enrollment rejected: %w", err)
 	}
 	if err := id.Save(cfg.IdentityDir); err != nil {
 		return err
 	}
-	cfg.MainShare = fmt.Sprintf("%s://%s/main.git", leetNet.Scheme, coordinator)
+	// The share URL must point at the GIT service, not the enrollment port
+	// we just talked to — the coordinator tells us where git lives, and we
+	// only fall back to the default port for older coordinators.
+	if gitAddr == "" {
+		host, _, splitErr := net.SplitHostPort(coordinator)
+		if splitErr != nil {
+			host = coordinator
+		}
+		gitAddr = net.JoinHostPort(host, fmt.Sprint(leetNet.DefaultPort))
+	}
+	cfg.MainShare = fmt.Sprintf("%s://%s/main.git", leetNet.Scheme, gitAddr)
 	return cfg.Save(cfgPath)
 }
 
@@ -169,7 +180,13 @@ func (d *Daemon) setupHandler() http.Handler {
 		out := []row{}
 		for _, p := range peers {
 			if p.Role == "coordinator" {
-				out = append(out, row{p.NodeID, p.Addr, p.Role})
+				addr := p.Addr
+				if p.EnrollPort > 0 {
+					if host, _, err := net.SplitHostPort(p.Addr); err == nil {
+						addr = net.JoinHostPort(host, fmt.Sprint(p.EnrollPort))
+					}
+				}
+				out = append(out, row{p.NodeID, addr, p.Role})
 			}
 		}
 		if err != nil {
@@ -250,11 +267,15 @@ func (d *Daemon) setupAction(kind string) http.HandlerFunc {
 }
 
 func friendlySetupError(err error) string {
-	msg := err.Error()
-	if strings.Contains(msg, "enrollment") || strings.Contains(msg, "secret") {
-		return "Enrollment was rejected — check the secret and the coordinator address, then try again."
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "enrollment") || strings.Contains(msg, "secret"):
+		return "Enrollment was rejected — check the invite code and try again."
+	case strings.Contains(msg, "tls") || strings.Contains(msg, "certificate") ||
+		strings.Contains(msg, "connection") || strings.Contains(msg, "refused"):
+		return "Could not reach enrollment on that address. Use the coordinator's enrollment address (port 7443 by default — the coordinator's own UI shows it), not its sync port."
 	}
-	return msg
+	return err.Error()
 }
 
 // --- the wizard page ---------------------------------------------------------

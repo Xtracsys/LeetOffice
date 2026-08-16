@@ -10,24 +10,25 @@ import (
 )
 
 func TestPeerTXTAssemblyAndParse(t *testing.T) {
-	fields := peerTXT("node-a", "coordinator", "ab12cd34")
-	want := []string{"node_id=node-a", "role=coordinator", "fp=ab12cd34"}
+	fields := peerTXT("node-a", "coordinator", "ab12cd34", 7443)
+	want := []string{"node_id=node-a", "role=coordinator", "fp=ab12cd34", "enroll=7443"}
 	if !reflect.DeepEqual(fields, want) {
 		t.Fatalf("TXT records = %v, want %v", fields, want)
 	}
-	nodeID, role, fp := parsePeerTXT(fields)
-	if nodeID != "node-a" || role != "coordinator" || fp != "ab12cd34" {
-		t.Fatalf("parsed (%q,%q,%q), want (node-a,coordinator,ab12cd34)", nodeID, role, fp)
+	nodeID, role, fp, ep := parsePeerTXT(fields)
+	if nodeID != "node-a" || role != "coordinator" || fp != "ab12cd34" || ep != 7443 {
+		t.Fatalf("parsed (%q,%q,%q,enroll=%d), want (node-a,coordinator,ab12cd34,7443)", nodeID, role, fp, ep)
 	}
 
 	// Order must not matter and unknown records must be ignored.
 	shuffled := []string{"someother=x", "fp=ab12cd34", "node_id=node-a", "role=coordinator"}
-	if nodeID, role, fp = parsePeerTXT(shuffled); nodeID != "node-a" || role != "coordinator" || fp != "ab12cd34" {
+	if nodeID, role, fp, _ = parsePeerTXT(shuffled); nodeID != "node-a" || role != "coordinator" || fp != "ab12cd34" {
 		t.Fatalf("shuffled parse = (%q,%q,%q)", nodeID, role, fp)
 	}
 
+
 	// Non-LeetOffice mDNS records are not peers.
-	if nodeID, _, _ = parsePeerTXT([]string{"path=/srv"}); nodeID != "" {
+	if nodeID, _, _, _ = parsePeerTXT([]string{"path=/srv"}); nodeID != "" {
 		t.Fatalf("foreign record parsed as peer %q", nodeID)
 	}
 }
@@ -39,7 +40,7 @@ func TestAnnounceAndDiscoverOverMulticast(t *testing.T) {
 	if err := probeMulticast(); err != nil {
 		t.Skipf("no mDNS multicast route in this environment: %v", err)
 	}
-	a, err := Announce("leet-test-node", "coordinator", "test-fp", "", 7418)
+	a, err := Announce("leet-test-node", "coordinator", "test-fp", "", 7418, 7443)
 	if err != nil {
 		t.Fatalf("Announce: %v", err)
 	}
