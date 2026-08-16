@@ -16,6 +16,23 @@ agents get MCP.
   [`RUNBOOK.md`](RUNBOOK.md) (the build order — this repo is that build).
 - License: Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)).
 
+## Everything in the GUI
+
+No terminal required for daily use. The UI (XtracBox design system: paper
+light theme, signal red, JetBrains Mono labels, dark terminal cards) covers:
+
+- **Chat** — channels, presence, composer; agents included via MCP
+- **Docs** — create/edit every document type; conflicts render visibly
+- **History** (`/audit`) — the full git audit trail: when, who, what, files,
+  with per-actor filters
+- **Settings** (`/settings`) — identity rename, sync cadence, Ollama endpoint,
+  **team invite code display + regeneration** (coordinators), always-on
+  service install/uninstall, and manual sync — the entire config surface
+- **Memory** and **Agents** — team memory and one-click MCP onboarding
+
+The first-run wizard shares the same theme. The CLI remains for power users
+and automation; nothing requires it.
+
 ## Team chat
 
 The workspace home (`http://127.0.0.1:7667`) is a team chat in the shape of

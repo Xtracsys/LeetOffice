@@ -286,22 +286,40 @@ func wizardPage(w http.ResponseWriter) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Welcome — LeetOffice</title>
 <style>
-body{font-family:-apple-system,system-ui,sans-serif;max-width:720px;margin:3rem auto;padding:0 1.25rem;color:#1a1a1a}
-h1{font-size:1.9rem;margin-bottom:.4rem}
-.sub{color:#666;margin-bottom:2rem}
-.choices{display:grid;gap:.8rem;margin-bottom:2rem}
-.choice{border:2px solid #ddd;border-radius:10px;padding:1rem 1.2rem;cursor:pointer;background:#fff}
-.choice:hover,.choice.sel{border-color:#1a1a1a}
-.choice b{display:block;font-size:1.05rem}
-.choice span{color:#666;font-size:.88rem}
+:root{--red:#d92a2a;--bg:#fff;--surface:#f8f5eb;--text:#111;--muted:#5b5b57;--faint:#8a8a85;
+--line:rgba(17,17,17,.12);--line2:rgba(17,17,17,.24);--wash:rgba(17,17,17,.05);
+--term:#141414;--termline:#2a2a2a;--termtext:#f8f5eb;
+--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+--mono:'JetBrains Mono',ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;
+max-width:680px;margin:0 auto;padding:64px 24px}
+.brand{display:inline-flex;gap:10px;align-items:center;font-family:var(--mono);font-weight:700;
+font-size:13px;letter-spacing:.18em;margin-bottom:26px}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--red);animation:p 2s infinite}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.35}}
+h1{font-size:38px;font-weight:700;letter-spacing:-.035em;line-height:1.08;margin-bottom:10px}
+.sub{color:var(--muted);margin-bottom:30px}
+.choices{display:grid;gap:12px;margin-bottom:28px}
+.choice{border:1px solid var(--line2);padding:16px 18px;cursor:pointer;background:var(--bg)}
+.choice:hover{background:var(--wash)}
+.choice.sel{border-color:var(--text);background:var(--surface)}
+.choice b{display:block;font-size:15px}
+.choice span{color:var(--muted);font-size:13px}
 form{display:none}
 form.on{display:block}
-label{display:block;font-weight:600;margin:.9rem 0 .3rem}
-input{width:100%;padding:.6rem .7rem;border:1px solid #ccc;border-radius:8px;font:inherit;box-sizing:border-box}
-button{margin-top:1.4rem;padding:.65rem 1.4rem;border-radius:8px;border:0;background:#1a1a1a;color:#fff;font:inherit;font-weight:600;cursor:pointer}
-.err{color:#c0392b;margin-top:.8rem;min-height:1.2rem}
-.secret{margin-top:1rem;padding:.8rem 1rem;background:#f4f9f4;border:1px solid #b7dfb7;border-radius:8px;font-family:ui-monospace,Menlo,monospace;font-size:1.05rem}
-.hint{color:#666;font-size:.85rem;margin-top:.3rem}
+label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+text-transform:uppercase;color:var(--faint);margin:16px 0 6px}
+input{width:100%;padding:11px 13px;border:1px solid var(--line2);font:inherit;background:var(--bg)}
+input:focus{outline:none;border-color:var(--text)}
+button{margin-top:20px;padding:14px 26px;background:var(--text);color:#fff;border:0;
+font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+button:hover{background:var(--red)}
+.err{color:var(--red);margin-top:12px;min-height:1.3em;font-size:13.5px}
+.termcard{background:var(--term);color:var(--termtext);border:1px solid var(--termline);
+font-family:var(--mono);font-size:1.15rem;letter-spacing:.1em;padding:16px 20px;margin-top:18px;
+box-shadow:0 12px 40px rgba(17,17,17,.18)}
+.hint{color:var(--faint);font-size:12.5px;margin-top:8px}
 </style></head><body>
 <h1>Welcome to LeetOffice</h1>
 <p class="sub">Two questions and you're working. Everything stays on your machines.</p>

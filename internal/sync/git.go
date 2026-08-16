@@ -524,7 +524,7 @@ type AuditEntry struct {
 func (r *Repo) AuditLog(docPath string, since time.Time, actor string, limit int) ([]AuditEntry, error) {
 	head, err := r.repo.Head()
 	if err != nil {
-		return nil, err
+		return nil, nil // unborn repo: no history yet, not an error
 	}
 	iter, err := r.repo.Log(&git.LogOptions{From: head.Hash(), Order: git.LogOrderCommitterTime})
 	if err != nil {

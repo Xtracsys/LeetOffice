@@ -132,9 +132,9 @@ func TestSetupWizardFlow(t *testing.T) {
 	if !strings.Contains(home, "Channels") || !strings.Contains(home, "/api/state") {
 		t.Fatalf("chat shell not live after wizard:\n%.300s", home)
 	}
-	docs := get(t, h, "/docs")
-	if !strings.Contains(docs, "make always-on") {
-		t.Fatalf("docs page missing service button:\n%.300s", docs)
+	settings := get(t, h, "/settings")
+	if !strings.Contains(settings, "make always-on") {
+		t.Fatalf("settings page missing service button:\n%.300s", settings)
 	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil || cfg.Actor != "human:josh" {

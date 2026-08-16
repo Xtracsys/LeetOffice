@@ -41,6 +41,9 @@ func (u *UI) Handler() http.Handler {
 	mux.HandleFunc("/agents", u.handleAgents)
 	mux.HandleFunc("/api/state", u.handleAPIState)
 	mux.HandleFunc("/api/send", u.handleAPISend)
+	mux.HandleFunc("/audit", u.handleAudit)
+	mux.HandleFunc("/settings", u.handleSettings)
+	mux.HandleFunc("/settings/invite", u.handleInviteRegen)
 	return mux
 }
 
@@ -68,13 +71,9 @@ func (u *UI) handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b strings.Builder
-	b.WriteString("<!DOCTYPE html><html><head><meta charset=utf-8><title>LeetOffice</title>" + pageStyle + "</head><body><nav><b>LeetOffice</b>")
-	fmt.Fprintf(&b, "<a href='/'>chat</a> <a href='/docs'>docs</a> <a href='/memory'>memory</a> <a href='/agents'>agents</a> ")
-	fmt.Fprintf(&b, "<a href='#' onclick=\"fetch('/sync',{method:'POST'}).then(()=>location.reload());return false\">sync now</a></nav>")
-
-	fmt.Fprintf(&b, "<p class=meta>node %s · role %s · store %s · actor %s</p>",
+	b.WriteString(`<div class="eyebrow"><span class="pulse"></span>FILE / DOCS · SHARED WORKSPACE</div><h1>Docs</h1>`)
+	fmt.Fprintf(&b, "<p class=meta>node %s · role %s · store %s · actor %s · <a href='/settings'>settings</a></p>",
 		html.EscapeString(u.Config.NodeID), u.Config.Role, html.EscapeString(u.Config.StoreDir), html.EscapeString(u.Config.Actor))
-	b.WriteString(`<form method="post" action="/service/install" style="margin:.4rem 0 1rem"><button title="Start LeetOffice automatically at login and keep it running">make always-on</button></form>`)
 
 	b.WriteString("<table><tr><th>slug</th><th>type</th><th>title</th><th>updated</th><th>links</th></tr>")
 	for _, d := range docs {
@@ -89,8 +88,7 @@ func (u *UI) handleHome(w http.ResponseWriter, r *http.Request) {
 <input name="title" placeholder="title" required size=32>
 <textarea name="body" placeholder="first paragraph (optional)"></textarea>
 <button>create</button></form>`)
-	b.WriteString("</body></html>")
-	io.WriteString(w, b.String())
+	_, _ = w.Write([]byte(xbPage("Agents", "agents", b.String())))
 }
 
 func linkTotal(d *store.Doc) int {
@@ -151,9 +149,8 @@ func (u *UI) handleDoc(w http.ResponseWriter, r *http.Request) {
 
 func (u *UI) renderDoc(w http.ResponseWriter, d *store.Doc) {
 	var b strings.Builder
-	b.WriteString("<!DOCTYPE html><html><head><meta charset=utf-8><title>" + html.EscapeString(d.Title) + "</title>" + pageStyle + "</head><body>")
-	fmt.Fprintf(&b, "<nav><b>LeetOffice</b><a href='/'>docs</a> <a href='/memory'>memory</a></nav>")
-	fmt.Fprintf(&b, "<h1>%s</h1><p class=meta>%s · v%d · updated %s · last editor <code>%s</code></p>",
+	fmt.Fprintf(&b, `<div class="eyebrow"><span class="pulse"></span>FILE / DOC · %s</div>`, html.EscapeString(d.Slug))
+	fmt.Fprintf(&b, "<h1>%s</h1><p class=meta>%s · v%d · updated %s · last editor <code>%s</code> · <a href='/audit'>history</a></p>",
 		html.EscapeString(d.Title), d.Type, d.Version, d.Updated, html.EscapeString(d.Audit.LastEditor))
 
 	b.WriteString(`<form method="post">`)
@@ -162,7 +159,8 @@ func (u *UI) renderDoc(w http.ResponseWriter, d *store.Doc) {
 		if _, flagged := blk.Meta["conflict"]; flagged {
 			b.WriteString(`<blockquote class="conflict">⚠ conflicting edit — both versions retained (merge D6)</blockquote>`)
 		}
-		fmt.Fprintf(&b, "<textarea name='block_%s'>%s</textarea>", blk.ID, html.EscapeString(blk.Content))
+		fmt.Fprintf(&b, "<div class='field'><span class='mono muted' style='font-size:10px'>%s</span><textarea name='block_%s'>%s</textarea></div>",
+			blk.Type, blk.ID, html.EscapeString(blk.Content))
 	}
 	b.WriteString(`<h3>Add block</h3>
 <select name="new_type"><option>paragraph</option><option>heading</option><option>task-item</option><option>list-item</option><option>code</option><option>field</option><option>divider</option></select>
@@ -224,11 +222,11 @@ func (u *UI) handleMemory(w http.ResponseWriter, r *http.Request) {
 		raw = []byte("MEMORY.md not synthesized yet.")
 	}
 	var b strings.Builder
-	b.WriteString("<!DOCTYPE html><html><head><meta charset=utf-8><title>Memory</title>" + pageStyle + "</head><body>")
-	b.WriteString("<nav><b>LeetOffice</b><a href='/'>docs</a> <a href='/memory'>memory</a></nav><h1>Team Memory</h1><pre style='white-space:pre-wrap'>")
+	b.WriteString(`<div class="eyebrow"><span class="pulse"></span>FILE / MEMORY · TEAM CONTEXT</div><h1>Team Memory</h1>`)
+	b.WriteString("<pre style='white-space:pre-wrap;margin-top:18px'>")
 	b.WriteString(html.EscapeString(string(raw)))
-	b.WriteString("</pre></body></html>")
-	io.WriteString(w, b.String())
+	b.WriteString("</pre>")
+	_, _ = w.Write([]byte(xbPage("Memory", "memory", b.String())))
 }
 
 func slugify(s string) string {
@@ -271,8 +269,7 @@ func (u *UI) handleAgents(w http.ResponseWriter, r *http.Request) {
 }`, bin, cfgFlag)
 
 	var b strings.Builder
-	b.WriteString("<!DOCTYPE html><html><head><meta charset=utf-8><title>Agents — LeetOffice</title>" + pageStyle + "</head><body>")
-	b.WriteString("<nav><b>LeetOffice</b><a href='/'>chat</a> <a href='/docs'>docs</a> <a href='/memory'>memory</a> <a href='/agents'>agents</a></nav>")
+	b.WriteString(`<div class="eyebrow"><span class="pulse"></span>FILE / AGENTS · MCP ACCESS</div>`)
 	b.WriteString("<h1>Connect an agent</h1>")
 	b.WriteString("<p class=meta>Any MCP-capable client — Claude Code, Codex, Hermes, Cursor — can work in this store. Every write is attributed to the actor you name here.</p>")
 

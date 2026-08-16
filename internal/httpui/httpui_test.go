@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -167,4 +168,67 @@ func TestChatShellAndAPI(t *testing.T) {
 		t.Fatalf("empty accepted: %d", res2.StatusCode)
 	}
 	res2.Body.Close()
+}
+
+func TestAuditPageShowsHistory(t *testing.T) {
+	ui, _, repo := newUI(t)
+	d := store.NewDoc(store.TypeDoc, "spec", "Spec")
+	d.AddParagraph("content")
+	if err := ui.Store.Save(d, "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CommitAll("human:josh", "write spec"); err != nil {
+		t.Fatal(err)
+	}
+	h := httptest.NewServer(ui.Handler())
+	defer h.Close()
+	page := get(t, h, "/audit")
+	if !strings.Contains(page, "human:josh") || !strings.Contains(page, "write spec") {
+		t.Fatalf("audit page missing history:\n%.400s", page)
+	}
+	filtered := get(t, h, "/audit?actor=agent:nobody")
+	if strings.Contains(filtered, "write spec") {
+		t.Fatal("actor filter not applied")
+	}
+}
+
+func TestSettingsPageAndInvite(t *testing.T) {
+	ui, _, _ := newUI(t)
+	ui.CfgPath = filepath.Join(t.TempDir(), "node.json")
+	ui.Config.EnrollmentSecret = "firstcode123"
+	ui.Config.Role = "coordinator"
+	cfg := *ui.Config
+	if err := cfg.Save(ui.CfgPath); err != nil {
+		t.Fatal(err)
+	}
+	h := httptest.NewServer(ui.Handler())
+	defer h.Close()
+
+	// coordinator sees the invite code and can regenerate it
+	page := get(t, h, "/settings")
+	if !strings.Contains(page, "firstcode123") || !strings.Contains(page, "Team invite") {
+		t.Fatalf("settings missing invite:\n%.400s", page)
+	}
+	res, err := h.Client().PostForm(h.URL+"/settings/invite", nil)
+	if err != nil || res.StatusCode != 200 {
+		t.Fatalf("regen: %v %v", err, res)
+	}
+	res.Body.Close()
+	page2 := get(t, h, "/settings")
+	if strings.Contains(page2, "firstcode123") {
+		t.Fatal("old invite still shown after regeneration")
+	}
+
+	// saving identity + cadence persists
+	res2, err := h.Client().PostForm(h.URL+"/settings", url.Values{
+		"actor": {"maya"}, "sync_every_sec": {"15"},
+		"ollama_base": {ui.Config.Ollama.BaseURL}, "ollama_model": {ui.Config.Ollama.Model}})
+	if err != nil || res2.StatusCode != 200 {
+		t.Fatalf("save: %v %v", err, res2)
+	}
+	res2.Body.Close()
+	saved := get(t, h, "/settings")
+	if !strings.Contains(saved, "value=\"maya\"") || !strings.Contains(saved, `value="15"`) {
+		t.Fatalf("settings not persisted:\n%.400s", saved)
+	}
 }

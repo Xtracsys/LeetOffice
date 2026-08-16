@@ -125,37 +125,54 @@ func (u *UI) handleAPISend(w http.ResponseWriter, r *http.Request) {
 // --- the shell ----------------------------------------------------------------
 
 const chatCSS = `
+:root{
+ --red:#d92a2a; --bg:#fff; --surface:#f8f5eb; --text:#111; --muted:#5b5b57; --faint:#8a8a85;
+ --line:rgba(17,17,17,.12); --line2:rgba(17,17,17,.24); --wash:rgba(17,17,17,.05);
+ --term:#141414; --termline:#2a2a2a; --termtext:#f8f5eb;
+ --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+ --mono:'JetBrains Mono',ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,system-ui,"Segoe UI",sans-serif;font-size:14px;color:#1f1f1f;height:100vh;display:flex;overflow:hidden}
-.rail{width:264px;background:#1b1f2b;color:#cfd4e4;display:flex;flex-direction:column;flex-shrink:0}
-.rail .brand{padding:1rem 1.1rem;font-weight:700;letter-spacing:.02em;color:#fff;border-bottom:1px solid #2a3040}
-.rail .brand small{display:block;font-weight:400;font-size:.72rem;color:#8a93ab;margin-top:.15rem}
-.rail h4{font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:#8a93ab;padding:.9rem 1.1rem .35rem}
-.rail a.ch{display:flex;justify-content:space-between;padding:.38rem 1.1rem;color:#cfd4e4;text-decoration:none;border-radius:0 18px 18px 0;margin-right:.6rem}
-.rail a.ch:hover{background:#242a3a}
-.rail a.ch.on{background:#3b4b8f;color:#fff}
-.rail .new{margin:.3rem 1.1rem .3rem .5rem;font-size:.8rem;color:#8a93ab;background:none;border:1px dashed #3a4256;border-radius:6px;padding:.3rem .5rem;cursor:pointer;color:#aab2c9;width:calc(100% - 1.6rem)}
-.rail .people{flex:1;overflow-y:auto;padding-bottom:1rem}
-.rail .person{display:flex;align-items:center;gap:.5rem;padding:.28rem 1.1rem;font-size:.83rem}
-.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.dot.online{background:#4ade80}.dot.recent{background:#8a93ab}
-.main{flex:1;display:flex;flex-direction:column;min-width:0;background:#fff}
-.topbar{display:flex;align-items:center;gap:1rem;padding:.7rem 1.2rem;border-bottom:1px solid #e5e7ec}
-.topbar b{font-size:1.05rem}
-.topbar a{color:#3b4b8f;text-decoration:none;font-size:.85rem;margin-left:auto}
-.topbar a+a{margin-left:1.1rem}
-#stream{flex:1;overflow-y:auto;padding:1.1rem 1.3rem}
-.msg{display:flex;gap:.7rem;margin:.45rem 0;max-width:72ch}
-.msg .ava{width:34px;height:34px;border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;flex-shrink:0;text-transform:uppercase}
-.msg .who{font-weight:600;font-size:.85rem}
-.msg .who span{font-weight:400;color:#8a93ab;margin-left:.45rem;font-size:.76rem}
-.msg .body{margin-top:.1rem;white-space:pre-wrap;word-wrap:break-word;line-height:1.45}
-.composer{border-top:1px solid #e5e7ec;padding:.8rem 1.2rem;display:flex;gap:.7rem}
-.composer textarea{flex:1;resize:none;border:1px solid #d3d7e0;border-radius:8px;padding:.6rem .8rem;font:inherit;min-height:44px;max-height:160px;outline:none}
-.composer textarea:focus{border-color:#3b4b8f}
-.composer button{background:#3b4b8f;color:#fff;border:0;border-radius:8px;padding:0 1.2rem;font:inherit;font-weight:600;cursor:pointer}
-.composer button:disabled{opacity:.5}
-.hint{color:#8a93ab;font-size:.78rem;align-self:center}
+body{font-family:var(--sans);font-size:14px;color:var(--text);height:100vh;display:flex;overflow:hidden;background:var(--bg)}
+.rail{width:270px;background:var(--term);color:var(--termtext);display:flex;flex-direction:column;flex-shrink:0;border-right:1px solid var(--termline)}
+.rail .brand{padding:18px 20px;font-family:var(--mono);font-weight:700;letter-spacing:.18em;font-size:13px;border-bottom:1px solid var(--termline);display:flex;align-items:center;gap:10px}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--red);animation:xb-pulse 2s infinite}
+@keyframes xb-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.rail .brand small{display:block;font-weight:400;font-size:10px;color:rgba(248,245,235,.5);margin-top:4px;letter-spacing:.12em}
+.rail h4{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:rgba(248,245,235,.5);padding:16px 20px 6px}
+.rail a.ch{display:flex;justify-content:space-between;padding:7px 20px;color:var(--termtext);text-decoration:none;font-family:var(--mono);font-size:12.5px;letter-spacing:.04em}
+.rail a.ch:hover{background:rgba(248,245,235,.07)}
+.rail a.ch.on{background:var(--red);color:#fff}
+.rail .new{margin:8px 20px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;background:none;border:1px dashed rgba(248,245,235,.25);color:rgba(248,245,235,.6);padding:7px 10px;cursor:pointer;width:calc(100% - 40px)}
+.rail .new:hover{color:var(--termtext);border-color:rgba(248,245,235,.5)}
+.rail .people{flex:1;overflow-y:auto;padding-bottom:16px}
+.rail .person{display:flex;align-items:center;gap:9px;padding:5px 20px;font-size:12.5px;color:rgba(248,245,235,.85)}
+.rail .person .you{color:rgba(248,245,235,.4);font-size:11px}
+.dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.dot.online{background:var(--red);animation:xb-pulse 2s infinite}
+.dot.recent{background:rgba(248,245,235,.35)}
+.rail .foot{padding:14px 20px;border-top:1px solid var(--termline);display:flex;gap:14px}
+.rail .foot a{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(248,245,235,.55);text-decoration:none}
+.rail .foot a:hover{color:var(--termtext)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.topbar{display:flex;align-items:center;gap:18px;padding:14px 26px;border-bottom:1px solid var(--line)}
+.topbar b{font-size:17px;font-weight:700;letter-spacing:-.02em}
+.topbar a{color:var(--muted);text-decoration:none;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin-left:auto}
+.topbar a+a{margin-left:18px}
+.topbar a:hover{color:var(--text)}
+#stream{flex:1;overflow-y:auto;padding:22px 28px}
+.msg{display:flex;gap:12px;margin:10px 0;max-width:74ch}
+.msg .ava{width:34px;height:34px;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;text-transform:uppercase}
+.msg .who{font-weight:600;font-size:13px}
+.msg .who span{font-weight:400;color:var(--faint);margin-left:8px;font-size:11.5px;font-family:var(--mono)}
+.msg .body{margin-top:2px;white-space:pre-wrap;word-wrap:break-word;line-height:1.5;font-size:14px}
+.composer{border-top:1px solid var(--line);padding:14px 26px;display:flex;gap:12px}
+.composer textarea{flex:1;resize:none;border:1px solid var(--line2);background:var(--bg);padding:11px 14px;font:inherit;min-height:46px;max-height:160px;outline:none}
+.composer textarea:focus{border-color:var(--text)}
+.composer button{background:var(--text);color:#fff;border:0;padding:0 22px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.composer button:hover{background:var(--red)}
+.composer button:disabled{opacity:.4}
+.hint{color:var(--faint);font-size:11.5px;font-family:var(--mono);align-self:center}
 `
 
 func (u *UI) handleChat(w http.ResponseWriter, r *http.Request) {
@@ -165,16 +182,17 @@ func (u *UI) handleChat(w http.ResponseWriter, r *http.Request) {
 <title>LeetOffice — Team</title><style>` + chatCSS + `</style></head>
 <body>
 <nav class="rail">
-  <div class="brand">` + html.EscapeString(teamName(u)) + `<small>local · encrypted · yours</small></div>
+  <div class="brand"><span class="pulse"></span>` + html.EscapeString(teamName(u)) + `<small>LOCAL · ENCRYPTED · YOURS</small></div>
   <h4>Channels</h4>
   <div id="chans"></div>
   <button class="new" id="newch" title="Create a channel">+ new channel</button>
   <h4>People &amp; agents</h4>
   <div class="people" id="people"></div>
+  <div class="foot"><a href="/docs">docs</a><a href="/audit">history</a><a href="/settings">settings</a><a href="/agents">agents</a></div>
 </nav>
 <main class="main">
   <div class="topbar"><b id="chname"></b>
-    <a href="/docs">docs</a><a href="/memory">memory</a><a href="/agents">agents</a>
+    <a href="/docs">docs</a><a href="/memory">memory</a><a href="/audit">history</a><a href="/settings">settings</a><a href="/agents">agents</a>
   </div>
   <div id="stream"></div>
   <form class="composer" id="composer">
