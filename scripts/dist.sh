@@ -5,6 +5,9 @@ set -e
 cd "$(dirname "$0")/.."
 mkdir -p dist
 VERSION="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+# a dirty tree builds different bits than the commit it's named after, and
+# stale-name cleanup has deleted fresh binaries before — mark it instead
+if ! git diff --quiet 2>/dev/null; then VERSION="${VERSION}-dirty"; fi
 
 for target in \
   darwin/arm64 darwin/amd64 \
