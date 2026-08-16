@@ -1,177 +1,136 @@
+<div align="center">
+
 # LeetOffice
 
-A **100% local** workspace framework where **multiple humans and multiple AI
-agents** work together in one shared store — documents, tasks, notes, and
-links in a single graph, with block-level bidirectional links, unified team
-memory, full audit attribution, and encrypted node-to-node sync.
-**No cloud, no egress.**
+**A 100% local workspace where humans and AI agents work as one team.**
 
-One installable app; every node is a fat client by default and any node can be
-promoted to coordinator (server). The daemon (`leetd`) is headless and
-always-on; humans get a bundled desktop app (or any browser, read-only);
-agents get MCP.
+Chat, docs, tasks, and links in a single store — full audit, encrypted sync,
+zero cloud, zero egress.
 
-- Design docs: [`REQUIREMENTS.md`](REQUIREMENTS.md) (the what/why),
-  [`BUILD_SPEC.md`](BUILD_SPEC.md) (the contracts),
-  [`RUNBOOK.md`](RUNBOOK.md) (the build order — this repo is that build).
-- License: Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)).
+[![CI](https://github.com/leetoffice/leetoffice/actions/workflows/ci.yml/badge.svg)](https://github.com/leetoffice/leetoffice/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-red)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.26-111?logo=go)](go.mod)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20·%20Linux%20·%20Windows-111)](#install)
 
-## Everything in the GUI
+</div>
 
-No terminal required for daily use. The UI (XtracBox design system: paper
-light theme, signal red, JetBrains Mono labels, dark terminal cards) covers:
+---
 
-- **Chat** — channels, presence, composer; agents included via MCP
-- **Docs** — create/edit every document type; conflicts render visibly
-- **History** (`/audit`) — the full git audit trail: when, who, what, files,
-  with per-actor filters
-- **Settings** (`/settings`) — identity rename, sync cadence, Ollama endpoint,
-  **team invite code display + regeneration** (coordinators), always-on
-  service install/uninstall, and manual sync — the entire config surface
-- **Memory** and **Agents** — team memory and one-click MCP onboarding
+## Why
 
-The first-run wizard shares the same theme. The CLI remains for power users
-and automation; nothing requires it.
+Your team is held together by Slack + Linear + Notion + glue, and your AI
+agents are locked out of all of it. LeetOffice is one local system where
+**people and agents share the same store**: a teammate posts in `#general`,
+an agent reads it over MCP, files a task, links it to the doc — and every
+change is attributed in a git audit trail you own.
 
-## Team chat
+No accounts. No servers you don't control. No data leaving the LAN.
 
-The workspace home (`http://127.0.0.1:7667`) is a team chat in the shape of
-Teams/ZCode: a channel rail with people & agent presence, a message stream,
-and a composer. Under the hood a channel is just a `channel`-type document and
-each message an attributed, timestamped block — so chat inherits everything
-the store guarantees: git-durable history, per-message attribution
-(`human:<id>` / `agent:<id>`), full-text search, offline-first catch-up on
-rejoin, and lossless concurrent sends (block-level merge keeps both).
+```
+ you (browser/desktop)  ─┐
+ teammate (her machine) ─┼─ encrypted mTLS sync ─→ one audited store
+ agent (Claude/Codex)   ─┘        (git under the hood)
+```
 
-Agents are teammates in the same channels: `send_message` and `list_channels`
-are MCP tools, so Claude Code / Codex / Hermes converse where the humans do.
-Docs stay one click away (`docs` in the top bar); share a doc by mentioning
-its slug.
+## The 60-second tour
 
-## Installing on other systems
+```sh
+leetd        # that's the whole install-and-run
+```
 
-- **Any machine, no toolchain:** copy the right binary from `dist/` (built by
-  `./scripts/dist.sh` for macOS arm64/amd64, Linux amd64/arm64, Windows amd64),
-  run it once, and the first-run wizard does the rest — team coordinators are
-  auto-discovered on the LAN, joining needs one invite code.
-- **Desktop app:** `cd app && npm run dist` builds a `.dmg` / `AppImage` /
-  Windows installer that bundles `leetd` and auto-starts it — double-click and
-  you're in.
-- **From source:** `go build -o leetd ./cmd/leetd` (pure Go, no cgo).
-- **macOS/Linux service:** the UI's "make always-on" button (or `leetd install`)
-  registers a launchd agent / systemd user unit.
+1. The first-run wizard asks two questions (start a team / join a team / just me)
+2. You land in a **team chat** (channels, presence, agents included) that's
+   already alive with a welcome doc and starter channels
+3. **Docs / Memory / History / Agents / Settings** sit in a persistent menubar —
+   History is the full git audit trail; Settings holds your team invite code
+4. Click **make always-on** and it survives reboots. Done.
 
-## What's implemented
+Agents join through MCP (`leetd mcp-install` prints the config; the Agents
+page has a copy button):
 
-| Phase | Module | Status |
+```json
+{ "mcpServers": { "leetoffice": {
+    "command": "leetd", "args": ["mcp", "--actor", "agent:hermes"] } } }
+```
+
+Now `send_message`, `create_task`, `read_doc`, `search`, … — nine tools, every
+write attributed to the agent, merge-safe against human edits.
+
+## Install
+
+**macOS / Linux (one line):**
+
+```sh
+curl -fsSL https://leetoffice.dev/install.sh | sh
+```
+
+**Homebrew** (once the tap ships): `brew install leetoffice/tap/leetd`
+
+**Any platform, no script:** grab a binary from
+[releases](https://github.com/leetoffice/leetoffice/releases) —
+darwin/arm64 · darwin/amd64 · linux/amd64 · linux/arm64 · windows/amd64 —
+verify with `shasum -a 256 -c checksums-*.txt`, run it. Static, ~13 MB,
+zero dependencies (pure Go, no cgo).
+
+**From source:** `go build -o leetd ./cmd/leetd`
+
+**Second machine:** run LeetOffice there → *Join a team* → your coordinator
+is auto-discovered on the LAN → paste the invite code from Settings.
+Enrollment issues that machine an mTLS certificate; everything after that is
+encrypted sync with automatic offline catch-up.
+
+## What makes it different
+
+| | Slack/Teams + MCP glue | LeetOffice |
 |---|---|---|
-| 1 | Store: tabbed HTML + embedded JSON (canonical) + `INDEX.md`, block-level links, field-level AES-256-GCM | ✅ |
-| 2 | Git sync & audit: go-git, block-level merge (`leet-merge`), conflicts keep both versions, auto-rejoin | ✅ |
-| 3 | Node network & trust: local CA, enrollment secret → mTLS certs, mDNS discovery, git-over-mTLS `leet://` transport | ✅ |
-| 4 | MCP server: `search`, `read_doc`, `write_doc`, `create_task`, `link`, `audit_query`, `diff` over stdio + HTTP | ✅ |
-| 5 | Memory synthesis (`MEMORY.md`), daily digest, doc hygiene + monitor notices | ✅ |
-| 6 | RAG: keyword fallback (always on) + Ollama embeddings (optional), memory-boosted ranking, encrypted fields excluded | ✅ |
-| 7 | Skills & tools registry: manifest format, import/export, auto-promote at N clean uses | ✅ |
-| 8 | Human client: Teams-style chat shell + editor UI + Electron wrapper (`app/`), browser read-only fallback | ✅ |
-| 9 | Packaging: single binary, Apache-2.0, runbook-in-repo | ✅ |
+| Where data lives | their cloud | **your machines** |
+| Agents | bolted on per-app | **first-class teammates** (same chat, same audit) |
+| Audit trail | export tickets | **git history — every change attributed** |
+| Concurrent human+agent edits | last-write-wins | **block-level merge keeps both** |
+| Offline | degraded | **first-class; catch up in one sync** |
+| Formats | proprietary exports | **open: tabbed HTML + embedded JSON + Markdown index** |
+| Cost per seat | $$$ | **one binary** |
 
-v1 simplifications (documented, by design — see RUNBOOK §6 notes): the vector
-index is in-memory rather than SQLite, and the Electron app is a thin wrapper
-you run with `npm install && npm start` rather than a signed installer.
+Under the hood: documents are self-contained tabbed HTML files whose
+canonical payload is embedded JSON; reconciliation diffs the JSON and merges
+at the **block** level — same-block concurrent edits keep both versions,
+flagged, never silently overwritten. Team chat is the same store: a channel
+is a document, a message is an attributed block, so conversation inherits
+durability, search, and lossless merging. A local CA enrolls nodes with
+mTLS certificates; a `leet://` git transport syncs encrypted over your LAN.
+Memory synthesis, daily digests, hygiene checks, and memory-boosted search
+(Ollama optional, keyword fallback always) run on the daemon.
 
-## Quickstart — the easy way
-
-Build once (pure Go, no cgo, no system git needed), then never touch a terminal again:
-
-```sh
-go build -o leetd ./cmd/leetd
-./leetd            # that's it
-```
-
-The daemon opens a first-run wizard at `http://127.0.0.1:7667`:
-
-- **Start a new team** — this machine becomes the coordinator. The wizard shows
-  your one-time **invite code** to share out of band.
-- **Join a team** — coordinators on your network are auto-discovered via mDNS;
-  pick one (or type host:port), paste the invite code, done. Enrollment issues
-  your mTLS certificate and configures encrypted sync automatically.
-- **Just me** — a private local workspace; you can join a team later.
-
-Answer two questions and you land in the workspace. Then click **make
-always-on** on the home page (or run `leetd install`): LeetOffice registers as
-a login service (launchd on macOS, systemd on Linux) and survives reboots —
-no terminal, no manual startup, ever.
-
-**Agents:** the **agents** page in the UI shows your MCP configuration with a
-copy button (`leetd mcp-install` prints it; `leetd mcp-install --client claude
---write` drops a `.mcp.json` in the current project). Claude Code, Codex,
-Hermes, or any MCP HTTP client against `http://127.0.0.1:7667/mcp`.
-
-## Quickstart — the CLI way (power users)
+## Verify it
 
 ```sh
-./leetd init --coordinator --store ~/leetoffice/store --actor human:josh && ./leetd serve
-# second machine:
-./leetd enroll --coordinator <host>:7443 --secret <invite-code>
-./leetd init --store ~/leetoffice/store --actor human:maya --share leet://<host>:7418/main.git
-./leetd serve
+leetd check          # store self-test
+go test ./...        # full suite (13 packages, race-clean)
 ```
 
-Nodes sync every 5 s over mutually authenticated TLS and auto-rejoin after any
-offline period: pull → block-merge → push, zero manual steps.
+## What it isn't (yet)
 
-**Humans:** `http://127.0.0.1:7667` (or the Electron app in `app/`). Editing a
-block updates the canonical embedded JSON and lands as a git commit attributed
-to your actor id. Opening `docs/<slug>.html` in any browser is the read-only
-fallback.
+Honest limits of v0.1: the vector index is in-memory rather than SQLite;
+presence is mDNS + recent-activity; the desktop app ships as an Electron
+wrapper you build with `npm run dist` rather than a signed, notarized
+installer. Windows runs the daemon but has no service auto-start yet.
+All documented, all on the roadmap, none of them silent.
 
-## Everyday commands
+## Repo map
 
-```sh
-leetd doc list                       # what's in the store
-leetd doc show <slug>                # canonical JSON of a doc
-leetd audit [--doc <slug>] [--actor human:josh]   # what changed, by whom
-leetd sync                           # one fetch → merge → push cycle
-leetd memory | digest | hygiene      # run the automations on demand
-leetd registry list                  # skills & tools, stability state
-leetd registry use hello-leetoffice  # record a clean use (auto-promotes at threshold)
-leetd check                          # store self-test
-```
+`internal/store` schema · `internal/sync` git+audit+merge · `internal/net`
+mTLS/mDNS/transport · `internal/mcp` agent surface · `internal/chat` team
+chat · `internal/memory`+`rag` automations/search · `internal/httpui` GUI ·
+`internal/daemon` composition · `cmd/leetd` CLI.
 
-## Store format (D1)
+Spec-first project: [REQUIREMENTS.md](REQUIREMENTS.md) (the what/why, 19
+decisions) → [BUILD_SPEC.md](BUILD_SPEC.md) (the contracts) →
+[RUNBOOK.md](RUNBOOK.md) (the build order this repo followed, gate by gate).
 
-Each document is a self-contained **tabbed HTML file** with an **embedded JSON
-payload** — the JSON is canonical; the tabs are a rendering; `INDEX.md` is
-derived. Reconciliation diffs the JSON and merges at the **block** level:
-same-block concurrent edits keep **both** versions and flag a conflict — never
-a silent overwrite. Git history **is** the audit trail (every commit authored
-`human:<id>` or `agent:<id>`).
+## Contributing & security
 
-```
-<store>/
-├── INDEX.md  MEMORY.md  NOTICE.md
-├── docs/<slug>.html  tasks/  contacts/  channels/  companies/  emails/  memory/
-└── _audit/DIGEST-YYYY-MM-DD.md
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) — ground rules are short: stay local,
+never silently overwrite, git is the audit trail, pure Go.
+Vulnerabilities: [SECURITY.md](SECURITY.md).
 
-## Security model
-
-| Concern | Mechanism |
-|---|---|
-| Transport | mTLS on all node traffic; hostname matching replaced by CA-membership verification |
-| Membership | enrollment secret → node certificate from the team CA; rogue nodes rejected at handshake |
-| At rest | Cryptomator/VeraCrypt volume (your side) + field-level AES-256-GCM (`{"enc":true,...}` wraps) |
-| Audit | git history; attributed, timestamped; conflicts and hygiene issues surface in `NOTICE.md` |
-| Boundary | tooling is generic; private strategic content never ships in the open-source surface |
-
-## Verify
-
-```sh
-go test ./...          # full suite (store, sync, net, mcp, memory, rag, registry, e2e)
-go test -short ./...   # CI-safe (skips real multicast + network e2e)
-```
-
-The e2e package walks the definition of done: two nodes, a human UI edit, an
-agent MCP write, attribution in `git log`, same-block conflict retention,
-memory synthesis, and registry auto-promotion — plus a full mTLS sync cycle
-with a rogue-node rejection.
+Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)).

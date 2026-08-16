@@ -141,6 +141,16 @@ func TestSetupWizardFlow(t *testing.T) {
 		t.Fatalf("config after wizard: %v %+v", err, cfg)
 	}
 
+	// a brand-new team lands on a living workspace, not empty lists
+	state := get(t, h, "/api/state?channel=general")
+	if !strings.Contains(state, "team channel") {
+		t.Fatalf("welcome message missing from #general: %s", state)
+	}
+	docs := get(t, h, "/docs")
+	if !strings.Contains(docs, "welcome") {
+		t.Fatalf("welcome doc missing: %.300s", docs)
+	}
+
 	// coordinator path through the wizard too
 	d2 := &Daemon{cfgPath: filepath.Join(dir, "n2.json"), ctx: context.Background()}
 	d2.mu.Lock()

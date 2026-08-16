@@ -1,0 +1,51 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Full test suite (Linux has real networking)
+        run: go test ./...
+      - name: Build all platforms
+        run: |
+          RELEASE="${GITHUB_REF_NAME}" ./scripts/dist.sh
+          # release artifacts carry the tag (v0.1.0), not the commit
+          cd dist
+          for f in leetd-*; do mv "$f" "${f/leetd-/leetd-}"; done
+      - name: Checksums
+        run: (cd dist && shasum -a 256 leetd-* > "checksums-$(echo ${GITHUB_REF_NAME} | tr -d v).txt")
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/leetd-*
+            dist/checksums-*.txt
+          body: |
+            ## LeetOffice ${{ github.ref_name }}
+
+            **A 100% local workspace where humans and AI agents work as one team** —
+            chat, docs, tasks, and links in a single store with full audit, encrypted
+            sync, and zero cloud.
+
+            ### Install
+
+            ```sh
+            curl -fsSL https://leetoffice.dev/install.sh | sh   # macOS / Linux
+            ```
+
+            Or grab a binary below (darwin/arm64, darwin/amd64, linux/amd64,
+            linux/arm64, windows/amd64), run it, and the first-run wizard takes
+            over at http://127.0.0.1:7667.
+
+            ### Verify
+            `shasum -a 256 -c checksums-*.txt`

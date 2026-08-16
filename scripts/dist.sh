@@ -18,7 +18,9 @@ for target in \
   [ "$os" = "windows" ] && ext=".exe"
   out="dist/leetd-${VERSION}-${os}-${arch}${ext}"
   echo "building $out"
-  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$out" ./cmd/leetd
+  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+    -ldflags "-s -w -X main.version=${RELEASE:-dev} -X main.commit=${VERSION%-dirty}" \
+    -o "$out" ./cmd/leetd
 done
 
 ( cd dist && shasum -a 256 leetd-* > "checksums-${VERSION}.txt" )

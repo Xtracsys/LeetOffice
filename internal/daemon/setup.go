@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"leetoffice/internal/chat"
 	"leetoffice/internal/config"
 	leetNet "leetoffice/internal/net"
 	"leetoffice/internal/store"
@@ -154,6 +155,27 @@ func CreateLocal(cfgPath, storeDir, actor string) error {
 	return cfg.Save(cfgPath)
 }
 
+// seedWelcome gives a brand-new team a living workspace instead of empty
+// lists: a welcome doc, a starter channel with a first message, and a
+// general greeting from the creator. No-op when the store already has
+// content (joiners receive the real team's history via sync).
+func seedWelcome(node *Node, actor string) {
+	if docs, err := node.Store.List(); err == nil && len(docs) > 0 {
+		return
+	}
+	d := store.NewDoc(store.TypeDoc, "welcome", "Welcome to LeetOffice")
+	d.Tags = []string{"summary"}
+	d.AddParagraph("This workspace is yours: chat in channels, write docs, link anything to anything.")
+	d.AddParagraph("Every change — yours or an AI agent's — is attributed in History. Nothing leaves your machines.")
+	if err := node.Store.Save(d, actor); err == nil {
+		_, _ = node.Repo.CommitAll(actor, "welcome: first doc")
+	}
+	_, _, _ = chat.Send(node.Store, node.Repo, actor, "general",
+		"Welcome! This is "+strings.TrimPrefix(actor, "human:")+"'s team channel. Invite a teammate from Settings, or connect an AI agent from the Agents page.")
+	_, _, _ = chat.Send(node.Store, node.Repo, actor, "engineering",
+		"Create channels for anything — design, ops, incidents. Agents can post here too via the send_message MCP tool.")
+}
+
 // DefaultStoreDir is where the wizard puts a store by default.
 func DefaultStoreDir() string {
 	home, err := os.UserHomeDir()
@@ -258,6 +280,7 @@ func (d *Daemon) setupAction(kind string) http.HandlerFunc {
 			http.Error(w, "created config but failed to start: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		seedWelcome(node, actor)
 		d.becomeNode(d.ctx, node)
 
 		w.Header().Set("Content-Type", "application/json")

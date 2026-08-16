@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -71,6 +72,8 @@ func main() {
 		err = cmdUninstall(os.Args[2:])
 	case "mcp-install":
 		err = cmdMCPInstall(os.Args[2:])
+	case "version":
+		cmdVersion()
 	default:
 		usage()
 		os.Exit(2)
@@ -99,6 +102,7 @@ usage:
   leetd install [--config FILE]                                         register as always-on login service
   leetd uninstall                                                       remove the login service
   leetd mcp-install [--client claude] [--write]                         print/write MCP client config
+  leetd version                                                        build + platform info
   leetd check                                                          store self-test
 
   running leetd with no arguments starts the node (first run opens the setup wizard).
@@ -549,4 +553,15 @@ func cmdMCPInstall(args []string) error {
 	default:
 		return fmt.Errorf("--write needs --client claude (other clients: copy the printed snippet)")
 	}
+}
+
+// Build info, injected at release time (-ldflags "-X main.version=…").
+var (
+	version = "dev"
+	commit  = "none"
+)
+
+func cmdVersion() {
+	fmt.Printf("leetoffice %s (%s) %s/%s\n", version, commit, runtime.GOOS, runtime.GOARCH)
+	fmt.Println("https://github.com/leetoffice/leetoffice · Apache-2.0 · 100% local, no egress")
 }
