@@ -390,14 +390,23 @@ func cmdHygiene(args []string) error {
 
 func cmdRegistry(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: leetd registry list | use <name> [--ok|--fail]")
+		return fmt.Errorf("usage: leetd registry list | import <src-dir> | use <name> [--ok|--fail]")
 	}
 	sub := args[0]
-	cfg, _ := loadConfig(args[1:])
+	fs := flag.NewFlagSet("registry", flag.ContinueOnError)
+	cfgPath := fs.String("config", config.DefaultPath(), "config file")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		return err
+	}
 	node, err := daemon.Start(cfg)
 	if err != nil {
 		return err
 	}
+	rest := fs.Args()
 	switch sub {
 	case "list":
 		entries, err := registry.Load(repoRoot(cfg))
@@ -414,13 +423,23 @@ func cmdRegistry(args []string) error {
 				e.Manifest.CleanUses, thr)
 		}
 		return nil
+	case "import":
+		if len(rest) < 1 {
+			return fmt.Errorf("import <src-dir> (a folder with manifest.json)")
+		}
+		e, err := registry.Import(repoRoot(cfg), rest[0], cfg.Actor, node.Repo)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("imported %s %s@%s (%s)\n", e.Manifest.Kind, e.Manifest.Name, e.Manifest.Version, e.Manifest.Stability)
+		return nil
 	case "use":
-		if len(args) < 2 {
+		if len(rest) < 1 {
 			return fmt.Errorf("use <name> [--ok|--fail]")
 		}
-		name := args[1]
+		name := rest[0]
 		success := true
-		for _, a := range args[2:] {
+		for _, a := range rest[1:] {
 			if a == "--fail" {
 				success = false
 			}
