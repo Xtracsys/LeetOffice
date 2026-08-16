@@ -173,7 +173,7 @@ func (n *Node) syncOnce(reason string) {
 // notices (§7.3). Everything is best-effort: a failure logs and waits for the
 // next tick.
 func (n *Node) jobsLoop(ctx context.Context) {
-	lastSynth := ""
+	lastSynth := n.storeFingerprint() // no commit when nothing changed since start
 	lastDigestDay := time.Now().UTC().Format("2006-01-02")
 	synthT := time.NewTicker(60 * time.Second)
 	digestT := time.NewTicker(10 * time.Minute)
