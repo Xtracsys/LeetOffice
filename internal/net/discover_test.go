@@ -26,10 +26,26 @@ func TestPeerTXTAssemblyAndParse(t *testing.T) {
 		t.Fatalf("shuffled parse = (%q,%q,%q)", nodeID, role, fp)
 	}
 
-
 	// Non-LeetOffice mDNS records are not peers.
 	if nodeID, _, _, _ = parsePeerTXT([]string{"path=/srv"}); nodeID != "" {
 		t.Fatalf("foreign record parsed as peer %q", nodeID)
+	}
+}
+
+func TestAnnounceRejectsZeroPort(t *testing.T) {
+	_, err := Announce("node", "client", "", "", 0, 0)
+	if err == nil {
+		t.Fatal("Announce(port=0) succeeded; hashicorp/mdns must reject it")
+	}
+}
+
+func TestAnnouncePresencePort(t *testing.T) {
+	a, err := Announce("leet-presence-node", "client", "", "", PresencePort, 0)
+	if err != nil {
+		t.Fatalf("Announce(PresencePort): %v", err)
+	}
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("Shutdown: %v", err)
 	}
 }
 

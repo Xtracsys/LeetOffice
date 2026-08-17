@@ -16,6 +16,11 @@ const Scheme = "leet"
 // DefaultPort is the port assumed for leet:// URLs without an explicit one.
 const DefaultPort = 7418
 
+// PresencePort is what client nodes advertise on mDNS. They do not serve
+// git; hashicorp/mdns rejects port 0, so startClient used to fail announce
+// (or Announce then immediately Shutdown) and never showed up as online.
+const PresencePort = 9
+
 // DefaultRepoName is the bare-repo directory the coordinator creates and
 // the path joiners request (leet://host:port/main.git). v0.1.0's wizard
 // created LegacyRepoName instead; the git server still serves that name

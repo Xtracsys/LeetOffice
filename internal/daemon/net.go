@@ -23,7 +23,7 @@ func (n *Node) StartNetworking(ctx context.Context) error {
 	if n.Cfg.IsCoordinator() {
 		return n.serveCoordinator(ctx)
 	}
-	return n.startClient()
+	return n.startClient(ctx)
 }
 
 func (n *Node) serveCoordinator(ctx context.Context) error {
@@ -82,29 +82,43 @@ func (n *Node) serveCoordinator(ctx context.Context) error {
 	if err != nil {
 		log.Printf("net: mDNS announce failed (continuing): %v", err)
 	} else {
-		go func() {
-			<-ctx.Done()
-			_ = ann.Shutdown()
-		}()
+		keepAnnounce(ctx, ann)
 	}
 	return nil
 }
 
-func (n *Node) startClient() error {
+func (n *Node) startClient(ctx context.Context) error {
+	fp := ""
 	if strings.HasPrefix(n.Cfg.MainShare, leetNet.Scheme+"://") {
 		id, err := leetNet.LoadIdentity(n.Cfg.IdentityDir)
 		if err != nil {
 			return fmt.Errorf("no node identity at %s — run `leetd enroll` first: %w", n.Cfg.IdentityDir, err)
 		}
 		leetNet.InstallTransport(id.TLSConfig())
+		fp = id.Fingerprint()
 	}
-	ann, err := leetNet.Announce(n.Cfg.NodeID, "client", "", "", 0, 0)
+	// PresencePort is non-zero: hashicorp/mdns rejects port 0, which made
+	// the old Announce(..., 0, 0) a guaranteed no-op.
+	ann, err := leetNet.Announce(n.Cfg.NodeID, "client", fp, "", leetNet.PresencePort, 0)
 	if err != nil {
 		log.Printf("net: mDNS announce failed (continuing): %v", err)
 		return nil
 	}
-	go func() { _ = ann.Shutdown() }()
+	keepAnnounce(ctx, ann)
 	return nil
+}
+
+// keepAnnounce holds an mDNS announcer until ctx is cancelled. startClient
+// used to Announce then immediately Shutdown, so client presence never
+// lasted (README: mDNS + recent-activity).
+func keepAnnounce(ctx context.Context, ann interface{ Shutdown() error }) {
+	if ann == nil {
+		return
+	}
+	go func() {
+		<-ctx.Done()
+		_ = ann.Shutdown()
+	}()
 }
 
 // bareRootFor is the directory ServeGit should treat as its root: the
