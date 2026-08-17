@@ -204,7 +204,10 @@ func (n *Node) syncOnce(reason string) {
 // next tick.
 func (n *Node) jobsLoop(ctx context.Context) {
 	lastSynth := n.storeFingerprint() // no commit when nothing changed since start
-	lastDigestDay := time.Now().UTC().Format("2006-01-02")
+	// Do not seed lastDigestDay to today: that skipped the first write until
+	// the next UTC midnight (D16). Write today's digest on start; later
+	// ticks only fire when the calendar day changes.
+	lastDigestDay := n.writeDailyDigest()
 	synthT := time.NewTicker(60 * time.Second)
 	digestT := time.NewTicker(10 * time.Minute)
 	hygT := time.NewTicker(time.Hour)
@@ -230,11 +233,9 @@ func (n *Node) jobsLoop(ctx context.Context) {
 			if day == lastDigestDay {
 				break
 			}
-			if _, err := memory.DailyDigest(n.Store, n.Repo, time.Now().UTC(), n.Cfg.Actor); err != nil {
-				log.Printf("digest: %v", err)
-				break
+			if wrote := n.writeDailyDigest(); wrote != "" {
+				lastDigestDay = wrote
 			}
-			lastDigestDay = day
 		case <-hygT.C:
 			issues, err := memory.Hygiene(n.Store, 0)
 			if err != nil {
@@ -249,6 +250,17 @@ func (n *Node) jobsLoop(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// writeDailyDigest writes today's UTC digest (D16). Returns the day string
+// on success, or "" so the next tick retries.
+func (n *Node) writeDailyDigest() string {
+	day := time.Now().UTC()
+	if _, err := memory.DailyDigest(n.Store, n.Repo, day, n.Cfg.Actor); err != nil {
+		log.Printf("digest: %v", err)
+		return ""
+	}
+	return day.Format("2006-01-02")
 }
 
 // storeFingerprint hashes the documents themselves, NOT git HEAD: synthesis
