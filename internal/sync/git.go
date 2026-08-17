@@ -587,6 +587,33 @@ func (r *Repo) FileAtCommit(path string, back int) ([]byte, error) {
 	return fileAt(r.repo, c.Hash, path)
 }
 
+// DocAtVersion walks path's history and returns the newest revision whose
+// embedded doc.Version equals ver. ver == 0 means the file as of HEAD~1
+// (the parent commit). Used by the MCP diff tool.
+func (r *Repo) DocAtVersion(path string, ver int) (*store.Doc, error) {
+	if ver == 0 {
+		raw, err := r.FileAtCommit(path, 1)
+		if err != nil {
+			return nil, err
+		}
+		return store.ExtractDoc(raw)
+	}
+	for back := 0; back < 500; back++ {
+		raw, err := r.FileAtCommit(path, back)
+		if err != nil {
+			return nil, fmt.Errorf("sync: no revision of %s with version %d", path, ver)
+		}
+		d, err := store.ExtractDoc(raw)
+		if err != nil {
+			continue
+		}
+		if d.Version == ver {
+			return d, nil
+		}
+	}
+	return nil, fmt.Errorf("sync: no revision of %s with version %d", path, ver)
+}
+
 // Diff returns block-level stats and a unified-ish diff between two versions
 // of a doc by slug path. fromVersion/toVersion select by doc.Version field:
 // version 0 means "the version in the parent commit".

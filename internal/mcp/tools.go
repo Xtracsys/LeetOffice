@@ -239,27 +239,72 @@ func (s *Server) toolDiff(args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	parentRaw, err := s.repo.FileAtCommit(docPath(d), 1)
-	note := "diff: current version vs HEAD~1"
-	var prev *store.Doc
-	if err == nil {
-		if prev, err = store.ExtractDoc(parentRaw); err == nil && prev.ID != d.ID {
-			prev = nil // same path reused by a different doc — skip
-		}
+	path := docPath(d)
+	fromV, fromSet := argIntOK(args, "from_version")
+	toV, toSet := argIntOK(args, "to_version")
+
+	from, err := s.diffSide(d, path, fromV, fromSet, true)
+	if err != nil {
+		return nil, err
 	}
-	if err != nil || prev == nil {
+	to, err := s.diffSide(d, path, toV, toSet, false)
+	if err != nil {
+		return nil, err
+	}
+	note := "diff: selected versions"
+	if !fromSet && !toSet {
+		note = "diff: current version vs HEAD~1"
+	}
+	if from == nil {
 		note = "no prior version in history — diffing against empty document"
-		prev = &store.Doc{Schema: store.SchemaURL, ID: d.ID, Blocks: []store.Block{}}
+		from = &store.Doc{Schema: store.SchemaURL, ID: d.ID, Blocks: []store.Block{}}
 	}
-	res := leetSync.DiffDocs(prev, d)
+	res := leetSync.DiffDocs(from, to)
 	return map[string]any{
 		"unified_diff":   res.Unified,
 		"blocks_added":   res.BlocksAdded,
 		"blocks_removed": res.BlocksRemoved,
 		"note":           note,
-		"from_version":   prev.Version,
-		"to_version":     d.Version,
+		"from_version":   from.Version,
+		"to_version":     to.Version,
 	}, nil
+}
+
+// diffSide loads one end of a diff. Omitted from_version (or 0) is HEAD~1;
+// omitted to_version is the current store doc. A set non-zero version is
+// looked up in git history by doc.Version.
+func (s *Server) diffSide(current *store.Doc, path string, ver int, set, isFrom bool) (*store.Doc, error) {
+	if !set && !isFrom {
+		return current, nil
+	}
+	if !set || ver == 0 {
+		raw, err := s.repo.FileAtCommit(path, 1)
+		if err != nil {
+			if isFrom {
+				return nil, nil // empty base
+			}
+			return nil, fmt.Errorf("no parent revision to diff")
+		}
+		got, err := store.ExtractDoc(raw)
+		if err != nil || got.ID != current.ID {
+			if isFrom {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("parent revision is not this document")
+		}
+		return got, nil
+	}
+	if ver == current.Version {
+		return current, nil
+	}
+	got, err := s.repo.DocAtVersion(path, ver)
+	if err != nil {
+		return nil, err
+	}
+	if got.ID != current.ID {
+		return nil, fmt.Errorf("version %d at %s is a different document", ver, path)
+	}
+	return got, nil
 }
 
 // --- chat (§5 surface extension: agents are teammates, not just editors) ----

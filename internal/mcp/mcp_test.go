@@ -204,6 +204,41 @@ func TestWriteDocReplaceJSONBoolean(t *testing.T) {
 	}
 }
 
+// TestDiffHonorsVersions: from_version/to_version select by doc.Version.
+// The tool used to ignore them and always diff current vs HEAD~1.
+func TestDiffHonorsVersions(t *testing.T) {
+	srv, st, _ := newTestServer(t)
+	callTool(t, srv, "write_doc", map[string]any{"id_or_slug": "hist", "content": "one"})
+	callTool(t, srv, "write_doc", map[string]any{"id_or_slug": "hist", "content": "two"})
+	callTool(t, srv, "write_doc", map[string]any{"id_or_slug": "hist", "content": "three"})
+	d, err := st.Load("hist")
+	if err != nil || len(d.Blocks) != 3 {
+		t.Fatalf("seed: %v blocks=%d", err, len(d.Blocks))
+	}
+	// first write is NewDoc v1 + AddParagraph → v2
+	from, to := 2, d.Version
+	if to < from+2 {
+		t.Fatalf("expected version to grow by 2, got %d", to)
+	}
+	res := callTool(t, srv, "diff", map[string]any{
+		"id_or_slug": "hist", "from_version": from, "to_version": to,
+	}).(map[string]any)
+	if res["from_version"].(float64) != float64(from) || res["to_version"].(float64) != float64(to) {
+		t.Fatalf("reported versions: %#v", res)
+	}
+	if res["blocks_added"].(float64) != 2 {
+		t.Fatalf("from v%d to v%d should add 2 blocks: %#v", from, to, res)
+	}
+	if strings.Contains(res["note"].(string), "HEAD~1") {
+		t.Fatalf("versioned diff still used HEAD~1 default: %#v", res)
+	}
+
+	def := callTool(t, srv, "diff", map[string]any{"id_or_slug": "hist"}).(map[string]any)
+	if def["blocks_added"].(float64) != 1 {
+		t.Fatalf("default current vs HEAD~1 should add 1: %#v", def)
+	}
+}
+
 func TestCreateTaskAndLink(t *testing.T) {
 	srv, st, _ := newTestServer(t)
 

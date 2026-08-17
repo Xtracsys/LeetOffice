@@ -290,10 +290,27 @@ func argStr(args map[string]any, key string) string {
 }
 
 func argInt(args map[string]any, key string, def int) int {
-	if f, ok := args[key].(float64); ok {
-		return int(f)
+	if n, ok := argIntOK(args, key); ok {
+		return n
 	}
 	return def
+}
+
+func argIntOK(args map[string]any, key string) (int, bool) {
+	switch v := args[key].(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(n), true
+	default:
+		return 0, false
+	}
 }
 
 // argBool accepts a JSON boolean or the strings "true"/"1" (MCP clients
