@@ -19,9 +19,9 @@
     "files": ["main.js", "package.json"],
     "extraResources": [
       {
-        "from": "../dist/leetd-${os}-${arch}",
-        "to": "leetd",
-        "filter": ["**/*"]
+        "from": "../dist/electron/${os}-${arch}/",
+        "to": ".",
+        "filter": ["leetd", "leetd.exe"]
       }
     ],
     "mac": {

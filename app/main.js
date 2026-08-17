@@ -12,12 +12,31 @@ const fs = require("fs");
 const NODE_URL = process.env.LEETOFFICE_URL || "http://127.0.0.1:7667";
 
 function bundledDaemon() {
-  // electron-builder copies the platform binary to resources/leetd
+  // Packaged: extraResources copies dist/electron/${os}-${arch}/leetd → resources/leetd
+  // Dev: dist.sh writes leetd-<ver>-<goos>-<goarch> (and the electron/ alias).
+  const goos = process.platform === "win32" ? "windows" : process.platform;
+  const goarch = process.arch === "x64" ? "amd64" : process.arch;
+  const ext = process.platform === "win32" ? ".exe" : "";
+  const res = process.resourcesPath || "";
+  const dist = path.join(__dirname, "..", "dist");
   const candidates = [
-    path.join(process.resourcesPath || "", "leetd"),
-    path.join(process.resourcesPath || "", "leetd", "leetd"),
-    path.join(__dirname, "..", "dist", `leetd-${process.platform}-${process.arch}`),
+    path.join(res, "leetd" + ext),
+    path.join(res, "leetd"),
+    path.join(res, "leetd", "leetd" + ext),
   ];
+  if (fs.existsSync(dist)) {
+    const ver = (() => {
+      try { return require("./package.json").version; } catch { return ""; }
+    })();
+    if (ver) {
+      candidates.push(path.join(dist, `leetd-${ver}-${goos}-${goarch}${ext}`));
+    }
+    for (const name of fs.readdirSync(dist)) {
+      if (name.startsWith("leetd-") && name.endsWith(`-${goos}-${goarch}${ext}`)) {
+        candidates.push(path.join(dist, name));
+      }
+    }
+  }
   return candidates.find((p) => p && fs.existsSync(p));
 }
 

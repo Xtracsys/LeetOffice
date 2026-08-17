@@ -20,7 +20,7 @@ Electron pins its own Chromium, so browser/OS updates cannot break the client.
 Build the platform binaries first, then the installer:
 
 ```sh
-./scripts/dist.sh          # produces dist/leetd-<os>-<arch>
+./scripts/dist.sh          # produces dist/leetd-<ver>-<goos>-<goarch> + dist/electron/${os}-${arch}/leetd
 cd app && npm install && npm run dist
 # → dist/LeetOffice.dmg (macOS), AppImage (Linux), NSIS installer (Windows)
 ```

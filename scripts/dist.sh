@@ -8,6 +8,7 @@ mkdir -p dist
 # -dirty named) are removed here so a rebuild is ALWAYS just ./scripts/dist.sh
 # with no follow-up cleanup — manual rm globs have deleted fresh binaries.
 rm -f dist/leetd-* dist/checksums-*.txt
+rm -rf dist/electron
 VERSION="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
 # a dirty tree builds different bits than the commit it's named after, and
 # stale-name cleanup has deleted fresh binaries before — mark it instead
@@ -25,6 +26,14 @@ for target in \
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
     -ldflags "-s -w -X main.version=${RELEASE:-dev} -X main.commit=${VERSION%-dirty}" \
     -o "$out" ./cmd/leetd
+  # electron-builder extraResources uses ${os}/${arch} = mac/x64, not darwin/amd64
+  eb_os="$os"
+  eb_arch="$arch"
+  [ "$os" = "darwin" ] && eb_os=mac
+  [ "$os" = "windows" ] && eb_os=win
+  [ "$arch" = "amd64" ] && eb_arch=x64
+  mkdir -p "dist/electron/${eb_os}-${eb_arch}"
+  cp "$out" "dist/electron/${eb_os}-${eb_arch}/leetd${ext}"
 done
 
 cp docs/user-guide.html dist/leetoffice-guide.html
