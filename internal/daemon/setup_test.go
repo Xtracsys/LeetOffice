@@ -110,6 +110,65 @@ func TestJoinTeamEnrollsAndConfigures(t *testing.T) {
 	}
 }
 
+// TestInviteRegenLiveEnroll is the wiring gate: settings regen must
+// rotate the running EnrollmentServer. Writing node.json alone used to
+// leave the live handler closed over the old secret until restart.
+func TestInviteRegenLiveEnroll(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "node.json")
+	oldSecret, err := CreateTeam(cfgPath, filepath.Join(dir, "store"), "human:josh")
+	if err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Listen.Git = "127.0.0.1:0"
+	cfg.Listen.Enroll = "127.0.0.1:0"
+
+	n, err := Start(cfg)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	n.cfgPath = cfgPath
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := n.StartLoops(ctx); err != nil {
+		t.Fatalf("StartLoops: %v", err)
+	}
+	if n.enroll == nil {
+		t.Fatal("coordinator started without enrollment server")
+	}
+	enrollAddr := n.enroll.Addr().String()
+
+	if _, _, err := leetNet.Enroll(enrollAddr, "node-old", oldSecret, ""); err != nil {
+		t.Fatalf("enroll with original secret: %v", err)
+	}
+
+	h := httptest.NewServer(n.ServeHTTP())
+	defer h.Close()
+	res, err := h.Client().Post(h.URL+"/settings/invite", "application/x-www-form-urlencoded", strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("regen: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("regen status %d", res.StatusCode)
+	}
+
+	newSecret := n.Cfg.EnrollmentSecret
+	if newSecret == "" || newSecret == oldSecret {
+		t.Fatalf("secret not rotated in config: %q → %q", oldSecret, newSecret)
+	}
+	if _, _, err := leetNet.Enroll(enrollAddr, "node-stale", oldSecret, ""); err == nil {
+		t.Fatal("old secret still accepted after regen")
+	}
+	if _, _, err := leetNet.Enroll(enrollAddr, "node-new", newSecret, ""); err != nil {
+		t.Fatalf("enroll with rotated secret (no restart): %v", err)
+	}
+}
+
 // TestSetupWizardFlow drives the wizard handler exactly as the browser does:
 // POST an action, expect the node to come alive without a process restart.
 func TestSetupWizardFlow(t *testing.T) {

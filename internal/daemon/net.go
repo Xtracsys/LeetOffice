@@ -69,6 +69,7 @@ func (n *Node) serveCoordinator(ctx context.Context) error {
 		log.Printf("net: enrollment on %s — nodes run `leetd enroll --coordinator %s --secret <secret>`",
 			enr.Addr(), enrollAddr(enr.Addr(), n.Cfg))
 		enrollPort = portOf(enr.Addr())
+		n.enroll = enr
 		go func() {
 			<-ctx.Done()
 			_ = enr.Close()

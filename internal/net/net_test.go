@@ -179,3 +179,36 @@ func TestEnrollment(t *testing.T) {
 		}
 	})
 }
+
+// TestEnrollmentSecretRotate is the live-regen gate: SetSecret must take
+// effect on the running listener. A settings regen used to write node.json
+// only; the handler closed over the old secret until leetd restarted.
+func TestEnrollmentSecretRotate(t *testing.T) {
+	dir := t.TempDir()
+	ca, coord := teamFixture(t, dir)
+	const oldSecret = "oldcode12345"
+	const newSecret = "newcode12345"
+
+	es, err := NewEnrollmentServer(ca, oldSecret, "127.0.0.1:0", coord.EnrollmentTLSConfig(), 7418, "")
+	if err != nil {
+		t.Fatalf("NewEnrollmentServer: %v", err)
+	}
+	defer es.Close()
+
+	if _, _, err := Enroll(es.Addr().String(), "node-old", oldSecret, ca.Fingerprint()); err != nil {
+		t.Fatalf("enroll with original secret: %v", err)
+	}
+
+	es.SetSecret(newSecret)
+
+	if _, _, err := Enroll(es.Addr().String(), "node-stale", oldSecret, ca.Fingerprint()); err == nil || !strings.Contains(err.Error(), "wrong enrollment secret") {
+		t.Fatalf("old secret still accepted after rotate: %v", err)
+	}
+	id, _, err := Enroll(es.Addr().String(), "node-new", newSecret, ca.Fingerprint())
+	if err != nil {
+		t.Fatalf("enroll with rotated secret (no restart): %v", err)
+	}
+	if id.NodeID() != "node-new" {
+		t.Fatalf("node id = %q, want node-new", id.NodeID())
+	}
+}

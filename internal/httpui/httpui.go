@@ -26,6 +26,10 @@ type UI struct {
 	// locations (daemon sets them; tests can stub).
 	BinaryPath string
 	CfgPath    string
+	// RotateEnrollment swaps the live EnrollmentServer secret after
+	// handleInviteRegen persists the new code (D8). Nil when enrollment
+	// is not running (tests, clients).
+	RotateEnrollment func(secret string)
 }
 
 // Handler builds the HTTP routes.

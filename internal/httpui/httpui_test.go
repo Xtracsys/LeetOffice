@@ -197,6 +197,8 @@ func TestSettingsPageAndInvite(t *testing.T) {
 	ui.CfgPath = filepath.Join(t.TempDir(), "node.json")
 	ui.Config.EnrollmentSecret = "firstcode123"
 	ui.Config.Role = "coordinator"
+	var live []string
+	ui.RotateEnrollment = func(secret string) { live = append(live, secret) }
 	cfg := *ui.Config
 	if err := cfg.Save(ui.CfgPath); err != nil {
 		t.Fatal(err)
@@ -217,6 +219,12 @@ func TestSettingsPageAndInvite(t *testing.T) {
 	page2 := get(t, h, "/settings")
 	if strings.Contains(page2, "firstcode123") {
 		t.Fatal("old invite still shown after regeneration")
+	}
+	if len(live) != 1 || live[0] == "" || live[0] == "firstcode123" {
+		t.Fatalf("RotateEnrollment not called with the new secret: %v", live)
+	}
+	if !strings.Contains(page2, live[0]) {
+		t.Fatal("settings does not show the secret passed to the live server")
 	}
 
 	// saving identity + cadence persists

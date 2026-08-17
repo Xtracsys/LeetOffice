@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // Enrollment request/response bodies (JSON over TLS).
@@ -46,6 +47,7 @@ type EnrollmentServer struct {
 	ln      net.Listener
 	gitPort int    // advertised in responses so joiners sync to the right service
 	gitPath string // advertised repo path so joiners request the real share name
+	secret  atomic.Pointer[string]
 }
 
 // NewEnrollmentServer starts listening for enrollment requests on addr
@@ -61,7 +63,8 @@ func NewEnrollmentServer(ca *CA, secret, addr string, tlsConf *tls.Config, gitPo
 		gitPath = DefaultRepoPath
 	}
 	es := &EnrollmentServer{ln: ln, gitPort: gitPort, gitPath: gitPath}
-	es.srv = &http.Server{Handler: es.enrollHandler(ca, secret), TLSConfig: tlsConf}
+	es.SetSecret(secret)
+	es.srv = &http.Server{Handler: es.enrollHandler(ca), TLSConfig: tlsConf}
 	go func() { _ = es.srv.ServeTLS(ln, "", "") }()
 	return es, nil
 }
@@ -72,7 +75,22 @@ func (s *EnrollmentServer) Addr() net.Addr { return s.ln.Addr() }
 // Close stops the enrollment server.
 func (s *EnrollmentServer) Close() error { return s.srv.Close() }
 
-func (s *EnrollmentServer) enrollHandler(ca *CA, secret string) http.Handler {
+// SetSecret atomically replaces the enrollment secret. In-flight
+// comparisons see either the old or the new value; already-enrolled
+// nodes are unaffected (their certificates still work).
+func (s *EnrollmentServer) SetSecret(secret string) {
+	cp := secret
+	s.secret.Store(&cp)
+}
+
+func (s *EnrollmentServer) currentSecret() string {
+	if p := s.secret.Load(); p != nil {
+		return *p
+	}
+	return ""
+}
+
+func (s *EnrollmentServer) enrollHandler(ca *CA) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/enroll", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -85,8 +103,9 @@ func (s *EnrollmentServer) enrollHandler(ca *CA, secret string) http.Handler {
 			return
 		}
 		// The one-time secret is the membership gate (D8): compare in
-		// constant time and never leak why it failed.
-		if subtle.ConstantTimeCompare([]byte(req.Secret), []byte(secret)) != 1 {
+		// constant time and never leak why it failed. Load the current
+		// secret under the atomic so a settings regen takes effect live.
+		if subtle.ConstantTimeCompare([]byte(req.Secret), []byte(s.currentSecret())) != 1 {
 			http.Error(w, "wrong enrollment secret", http.StatusForbidden)
 			return
 		}

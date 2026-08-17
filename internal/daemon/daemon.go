@@ -19,6 +19,7 @@ import (
 	"leetoffice/internal/httpui"
 	"leetoffice/internal/mcp"
 	"leetoffice/internal/memory"
+	leetNet "leetoffice/internal/net"
 	"leetoffice/internal/rag"
 	"leetoffice/internal/store"
 	leetSync "leetoffice/internal/sync"
@@ -31,6 +32,7 @@ type Node struct {
 	Repo    *leetSync.Repo
 	MCP     *mcp.Server
 	cfgPath string
+	enroll  *leetNet.EnrollmentServer // live coordinator secret; rotated from settings
 }
 
 // Start opens the store and repo described by cfg.
@@ -98,6 +100,9 @@ func (n *Node) ServeHTTP() http.Handler {
 	mux := http.NewServeMux()
 	bin, _ := os.Executable()
 	ui := &httpui.UI{Store: n.Store, Repo: n.Repo, Config: n.Cfg, BinaryPath: bin, CfgPath: n.cfgPath}
+	if n.enroll != nil {
+		ui.RotateEnrollment = n.enroll.SetSecret
+	}
 	mux.Handle("/", ui.Handler())
 	mux.Handle("/mcp", n.MCP.Handler())
 	mux.HandleFunc("/service/install", handleServiceInstall(n.Cfg))

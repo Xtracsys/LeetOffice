@@ -185,5 +185,8 @@ func (u *UI) handleInviteRegen(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if u.RotateEnrollment != nil {
+		u.RotateEnrollment(u.Config.EnrollmentSecret)
+	}
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
