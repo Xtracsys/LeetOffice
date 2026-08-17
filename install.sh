@@ -10,7 +10,6 @@
 # self-contained (P1: 100% local).
 set -eu
 
-RELEASE="${LEASE:-}"
 VERSION=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -18,6 +17,10 @@ while [ $# -gt 0 ]; do
     *) echo "usage: install.sh [--version vX.Y.Z]" >&2; exit 1 ;;
   esac
 done
+# RELEASE=v0.1.0 is the env equivalent of --version (LEASE was a typo).
+if [ -z "$VERSION" ]; then
+  VERSION="${RELEASE:-}"
+fi
 
 # --- detect platform ---------------------------------------------------------
 OS="$(uname -s)"
@@ -66,14 +69,30 @@ else
   echo "need curl or wget to download" >&2; exit 1
 fi
 
-# --- verify checksum ---------------------------------------------------------
-if command -v shasum >/dev/null 2>&1; then
-  (cd "$TMP" && grep " ${NAME}\$" checksums.txt | shasum -a 256 -c -) \
-    || { echo "checksum verification FAILED — not installing" >&2; exit 1; }
-  echo "✓ checksum verified"
-else
-  echo "! shasum not found — skipping verification" >&2
+# --- verify checksum (shasum | sha256sum | openssl, same as dist.sh) ---------
+line="$(grep " ${NAME}\$" "${TMP}/checksums.txt" || true)"
+if [ -z "$line" ]; then
+  echo "checksum for ${NAME} not in checksums.txt — not installing" >&2
+  exit 1
 fi
+want="$(printf '%s\n' "$line" | awk '{print $1}')"
+if command -v shasum >/dev/null 2>&1; then
+  (cd "$TMP" && printf '%s\n' "$line" | shasum -a 256 -c -) \
+    || { echo "checksum verification FAILED — not installing" >&2; exit 1; }
+elif command -v sha256sum >/dev/null 2>&1; then
+  (cd "$TMP" && printf '%s\n' "$line" | sha256sum -c -) \
+    || { echo "checksum verification FAILED — not installing" >&2; exit 1; }
+elif command -v openssl >/dev/null 2>&1; then
+  got="$(openssl dgst -sha256 "${TMP}/${NAME}" | awk '{print $NF}')"
+  if [ "$got" != "$want" ]; then
+    echo "checksum verification FAILED — not installing" >&2
+    exit 1
+  fi
+else
+  echo "need shasum, sha256sum, or openssl to verify the download" >&2
+  exit 1
+fi
+echo "✓ checksum verified"
 chmod +x "${TMP}/${NAME}"
 
 # --- install -----------------------------------------------------------------
