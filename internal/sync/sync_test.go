@@ -325,3 +325,64 @@ func assertClean(t *testing.T, r *Repo, when string) {
 		t.Fatalf("%s: worktree dirty:\n%s", when, st)
 	}
 }
+
+// TestPushRejectsNonFastForward is the D6 gate: a diverged node must not
+// overwrite the share. The next Sync cycle merges and pushes as a
+// fast-forward of the share tip.
+func TestPushRejectsNonFastForward(t *testing.T) {
+	_, a, b, sa, sb := twoNodeFixture(t)
+
+	da, _ := sa.Load("spec")
+	da.AddParagraph("from A")
+	if err := sa.Save(da, "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.CommitAll("human:josh", "A ahead"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.push("origin"); err != nil {
+		t.Fatalf("A fast-forward push: %v", err)
+	}
+	aHead, err := a.HeadHash()
+	if err != nil || aHead == "" {
+		t.Fatalf("A HEAD: %v", err)
+	}
+
+	db, _ := sb.Load("spec")
+	db.AddParagraph("from B")
+	if err := sb.Save(db, "human:maya"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CommitAll("human:maya", "B diverged"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.push("origin"); err == nil {
+		t.Fatal("expected non-fast-forward rejection")
+	} else if !strings.Contains(err.Error(), "non-fast-forward") {
+		t.Fatalf("rejection should name non-fast-forward, got %v", err)
+	}
+
+	remoteAfter, err := a.remoteHead("origin")
+	if err != nil {
+		t.Fatalf("remote after rejected push: %v", err)
+	}
+	if remoteAfter.String() != aHead {
+		t.Fatalf("share overwritten: remote=%s want A's %s", remoteAfter, aHead)
+	}
+
+	res, err := b.Sync("origin", "human:maya")
+	if err != nil {
+		t.Fatalf("B sync after rejection: %v", err)
+	}
+	if !res.Merged || !res.Pushed {
+		t.Fatalf("expected merge+push after rejection, got %+v", res)
+	}
+	merged, err := sb.Load("spec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if merged.Block(getBlock(t, sb, "spec", "from A").ID) == nil ||
+		merged.Block(getBlock(t, sb, "spec", "from B").ID) == nil {
+		t.Fatalf("merge lost an edit: %+v", merged.Blocks)
+	}
+}

@@ -251,21 +251,39 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	return res, nil
 }
 
+// pushRefSpec updates the share's main without a leading '+'. Force-push
+// would overwrite a concurrent tip (D6); a non-fast-forward is rejected
+// and the next Sync cycle fetches, block-merges, and retries.
+const pushRefSpec = config.RefSpec("refs/heads/" + DefaultBranch + ":refs/heads/" + DefaultBranch)
+
 // push uploads local commits; pushed=false when the remote already had
 // everything (go-git's already-up-to-date), so idle cycles never masquerade
 // as activity in logs and SyncResults.
 func (r *Repo) push(remoteName string) (pushed bool, err error) {
 	err = r.repo.Push(&git.PushOptions{
 		RemoteName: remoteName,
-		RefSpecs:   []config.RefSpec{"+refs/heads/" + DefaultBranch + ":refs/heads/" + DefaultBranch},
+		RefSpecs:   []config.RefSpec{pushRefSpec},
 	})
 	if errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return false, nil
+	}
+	if isNonFastForward(err) {
+		return false, fmt.Errorf("push rejected (non-fast-forward): %w", err)
 	}
 	if err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+func isNonFastForward(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, git.ErrNonFastForwardUpdate) {
+		return true
+	}
+	return strings.Contains(err.Error(), "non-fast-forward")
 }
 
 func (r *Repo) mergeBase(a, b plumbing.Hash) (plumbing.Hash, error) {
