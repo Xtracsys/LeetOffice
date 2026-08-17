@@ -64,7 +64,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;padding-top:16px;font-fa
 
 <div class="wrap">
 <section class="hero">
- <div class="eyebrow"><span class="pulse"></span>FILE / GUIDE · v0.1 · 100% LOCAL</div>
+ <div class="eyebrow"><span class="pulse"></span>FILE / GUIDE · v0.1.1 · 100% LOCAL</div>
  <h1>From zero to a team workspace</h1>
  <p class="sub">LeetOffice is a workspace where humans and AI agents share one store — chat, docs,
  tasks, links — with every change attributed in a git audit trail. No cloud, no accounts,
@@ -86,9 +86,13 @@ footer{border-top:1px solid var(--line);margin-top:40px;padding-top:16px;font-fa
 <section class="panel on" id="panel-install">
  <h2>One line (macOS &amp; Linux)</h2>
  <pre>curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh</pre>
- <p>The script detects your platform, downloads the right binary, <b>verifies its SHA-256
- checksum</b>, installs to <code>~/.local/bin</code>, and tells you what to do next.
- If that folder isn't on your <span class="mono">PATH</span>, it shows the exact line to add.</p>
+ <p>The script detects your platform, downloads the latest release (<b>v0.1.1</b>),
+ <b>verifies its SHA-256 checksum</b>, installs to <code>~/.local/bin</code>, and tells
+ you what to do next. If that folder isn't on your <span class="mono">PATH</span>, it
+ shows the exact line to add.</p>
+
+ <h2>Homebrew (macOS &amp; Linux, no tap yet)</h2>
+ <pre>brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb</pre>
 
  <h2>From a GitHub release (any platform, no script)</h2>
  <ol>
@@ -112,7 +116,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;padding-top:16px;font-fa
  <pre>git clone https://github.com/Xtracsys/LeetOffice &amp;&amp; cd leetoffice
 go build -o leetd ./cmd/leetd   <span class="c"># pure Go, no cgo, no system deps</span></pre>
  <p>Check what you built:</p>
- <pre>leetd version   <span class="c"># e.g. leetoffice v0.1.0 (8abe240) darwin/arm64</span></pre>
+ <pre>leetd version   <span class="c"># e.g. leetoffice v0.1.1 (584d9ab) darwin/arm64</span></pre>
 </section>
 
 <!-- ================================================== 02 FIRST RUN -->
@@ -263,8 +267,8 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
      its Settings page), not its sync port. Same Wi-Fi/network? mDNS usually fills this
      in for you.</td></tr>
  <tr><th>Teammate joined but seems on a separate team</th>
-     <td>Run <code>leetd version</code> on both machines — both need v0.1.0+ (the join
-     fix). Re-join with <code>leetd enroll --coordinator host:7443 --secret CODE</code>.</td></tr>
+     <td>Run <code>leetd version</code> on both machines — both need <b>v0.1.1</b> (the
+     join-share fix). Re-join with <code>leetd enroll --coordinator host:7443 --secret CODE</code>.</td></tr>
  <tr><th>IPv6 mDNS note in the console</th>
      <td>One line saying IPv6 multicast is unavailable is normal on many networks;
      discovery continues over IPv4.</td></tr>
@@ -273,13 +277,14 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
      the same team share. <b>sync now</b> forces a cycle.</td></tr>
  <tr><th>Joined node logs <code>repository not found</code></th>
      <td>v0.1.0 named the coordinator share <code>~/main-share.git</code> while joiners
-     asked for <code>/main.git</code>. Upgrade the coordinator (this build serves both
-     names). Or migrate: <code>mv ~/main-share.git ~/main.git</code>, set
-     <code>main_share</code> in <code>~/.config/leetoffice/node.json</code> to
+     asked for <code>/main.git</code>. <b>Upgrade the coordinator to v0.1.1</b> (this
+     build serves both names). Or migrate: <code>mv ~/main-share.git ~/main.git</code>,
+     set <code>main_share</code> in <code>~/.config/leetoffice/node.json</code> to
      <code>file://…/main.git</code>, restart. Already-joined clients keep their
      <code>leet://host:7666/main.git</code> URL.</td></tr>
  <tr><th>Upgrade</th>
-     <td>Replace the binary, restart (or it restarts itself if always-on). Stores are
+     <td>Replace the binary with v0.1.1 (re-run the installer, or grab the release),
+     then restart (or it restarts itself if always-on). Stores are
      forward-compatible; <code>leetd check</code> self-tests.</td></tr>
  <tr><th>Full uninstall</th>
      <td><code>leetd uninstall</code> (service), delete the binary, and — if you really
@@ -309,12 +314,12 @@ document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click'
   "type": "doc",
   "slug": "user-guide",
   "title": "LeetOffice — Install & Basic Use Guide",
-  "version": 1,
-  "updated": "2026-08-16T00:00:00Z",
+  "version": 2,
+  "updated": "2026-08-17T12:00:00Z",
   "tags": ["guide", "install", "handbook"],
   "blocks": [
     {"id": "blk_install", "type": "heading", "content": "01 Install", "level": 2},
-    {"id": "blk_i1", "type": "paragraph", "content": "One line on macOS/Linux: curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh — platform detection, SHA-256 verification, installs to ~/.local/bin. Or download a release binary (darwin/arm64, darwin/amd64, linux/amd64, linux/arm64, windows/amd64), verify checksums, place on PATH. From source: go build -o leetd ./cmd/leetd."},
+    {"id": "blk_i1", "type": "paragraph", "content": "Latest is v0.1.1. One line on macOS/Linux: curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh — platform detection, SHA-256 verification, installs to ~/.local/bin. Homebrew: brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb. Or download a v0.1.1 release binary, verify checksums, place on PATH. From source: go build -o leetd ./cmd/leetd."},
     {"id": "blk_firstrun", "type": "heading", "content": "02 First run", "level": 2},
     {"id": "blk_f1", "type": "paragraph", "content": "Run leetd with no arguments; open http://127.0.0.1:7667. Wizard: start a team (coordinator + invite code), join a team (auto-discovered coordinator + invite code), or just me. Lands on a living workspace: welcome doc, #general greeting, starter channels."},
     {"id": "blk_teams", "type": "heading", "content": "03 Build a team", "level": 2},
@@ -326,7 +331,7 @@ document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click'
     {"id": "blk_settings", "type": "heading", "content": "06 Settings & always-on", "level": 2},
     {"id": "blk_s1", "type": "paragraph", "content": "make always-on registers a login service (launchd/systemd). Coordinators see and rotate the team invite code. Editable identity, sync cadence, Ollama endpoint. Backups = copy the store and the bare share (both plain git)."},
     {"id": "blk_trouble", "type": "heading", "content": "07 Troubleshooting", "level": 2},
-    {"id": "blk_r1", "type": "paragraph", "content": "Port 7443 vs sync port for joins; both nodes need v0.1.0+ (join fix); IPv6 mDNS note is benign; upgrade = replace binary + restart; full uninstall removes four listed paths."}
+    {"id": "blk_r1", "type": "paragraph", "content": "Port 7443 vs sync port for joins; both nodes need v0.1.1 (join-share fix); v0.1.0 main-share.git vs /main.git is fixed in this build; IPv6 mDNS note is benign; upgrade = replace binary + restart; full uninstall removes four listed paths."}
   ],
   "properties": {"audience": "end users", "format": "standalone tabbed HTML", "tabs": 7},
   "audit": {"last_editor": "human:release", "last_commit": "docs"}
