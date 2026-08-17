@@ -12,6 +12,7 @@ import (
 
 	"leetoffice/internal/config"
 	leetNet "leetoffice/internal/net"
+	"leetoffice/internal/store"
 )
 
 func TestCreateTeamConfig(t *testing.T) {
@@ -36,11 +37,19 @@ func TestCreateTeamConfig(t *testing.T) {
 	if cfg.EnrollmentSecret != secret {
 		t.Fatal("secret not persisted in config")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "main-share.git")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, leetNet.DefaultRepoName)); err != nil {
 		t.Fatalf("bare share not created: %v", err)
 	}
 	if strings.HasPrefix(cfg.IdentityDir, storeDir) {
 		t.Fatal("identity dir must live outside the store (it is a git repo)")
+	}
+	// ServeGit joins root + /main.git; the root must be the parent of the
+	// share, not the share itself (v0.1.0 joiners hit "repository not found").
+	if got, want := bareRootFor(cfg), dir; got != want {
+		t.Fatalf("bareRootFor = %q, want parent %q", got, want)
+	}
+	if got := shareRepoPath(cfg); got != leetNet.DefaultRepoPath {
+		t.Fatalf("shareRepoPath = %q, want %s", got, leetNet.DefaultRepoPath)
 	}
 }
 
@@ -67,7 +76,7 @@ func TestJoinTeamEnrollsAndConfigures(t *testing.T) {
 	}
 	defer gitSrv.Close()
 	enr, err := leetNet.NewEnrollmentServer(ca, "one-time-secret", "127.0.0.1:0",
-		coord.EnrollmentTLSConfig(), gitSrv.Addr().(*net.TCPAddr).Port)
+		coord.EnrollmentTLSConfig(), gitSrv.Addr().(*net.TCPAddr).Port, leetNet.DefaultRepoPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,6 +190,155 @@ func TestSetupValidation(t *testing.T) {
 	if code != 400 {
 		t.Fatalf("join without coordinator accepted: %d", code)
 	}
+}
+
+// TestWizardCreatedTeamJoinSyncs is the regression for the v0.1.0 join
+// bug: CreateTeam (the wizard) used to name the share main-share.git and
+// ServeGit used that path as its root, so a joiner requesting /main.git
+// looked for <share>/main.git and got "repository not found" forever.
+// This test uses the wizard layout end-to-end, not the hand-built
+// shares/main.git fixture that hid the mismatch.
+func TestWizardCreatedTeamJoinSyncs(t *testing.T) {
+	dir := t.TempDir()
+	coordStore := filepath.Join(dir, "coord", "LeetOffice")
+	secret, err := CreateTeam(filepath.Join(dir, "coord.json"), coordStore, "human:josh")
+	if err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	cfg, err := config.Load(filepath.Join(dir, "coord.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	coord, err := Start(cfg)
+	if err != nil {
+		t.Fatalf("start coordinator store: %v", err)
+	}
+	seedWelcome(coord, cfg.Actor)
+	if _, err := coord.SyncOnce(); err != nil {
+		t.Fatalf("coordinator seed push: %v", err)
+	}
+
+	ca, ident := teamCA(t, dir)
+	gitSrv, err := leetNet.ServeGit("127.0.0.1:0", ident.ServerTLSConfig(), bareRootFor(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gitSrv.Close()
+	enr, err := leetNet.NewEnrollmentServer(ca, secret, "127.0.0.1:0",
+		ident.EnrollmentTLSConfig(), gitSrv.Addr().(*net.TCPAddr).Port, shareRepoPath(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer enr.Close()
+
+	clientCfg := filepath.Join(dir, "joiner.json")
+	clientStore := filepath.Join(dir, "joiner", "LeetOffice")
+	if err := JoinTeam(clientCfg, clientStore, "human:maya", enr.Addr().String(), secret); err != nil {
+		t.Fatalf("JoinTeam: %v", err)
+	}
+	joined, err := config.Load(clientCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantShare := "leet://" + gitSrv.Addr().String() + leetNet.DefaultRepoPath
+	if joined.MainShare != wantShare {
+		t.Fatalf("joiner share = %s, want %s", joined.MainShare, wantShare)
+	}
+
+	id, err := leetNet.LoadIdentity(joined.IdentityDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leetNet.InstallTransport(id.TLSConfig())
+	client, err := Start(joined)
+	if err != nil {
+		t.Fatalf("start joiner: %v", err)
+	}
+	res, err := client.SyncOnce()
+	if err != nil {
+		t.Fatalf("joiner sync (wizard layout): %v", err)
+	}
+	if !res.Pulled {
+		t.Fatalf("expected a pull of the wizard-seeded share, got %+v", res)
+	}
+	if _, err := client.Store.Load("welcome"); err != nil {
+		t.Fatalf("joiner did not receive the welcome doc: %v", err)
+	}
+}
+
+// TestLegacyShareNameJoinSyncs: a coordinator still sitting on v0.1.0's
+// main-share.git must keep serving joiners that request /main.git.
+func TestLegacyShareNameJoinSyncs(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, "LeetOffice")
+	cfg := config.Default(storeDir, "human:josh")
+	cfg.Role = "coordinator"
+	cfg.MainShare = "file://" + filepath.Join(dir, leetNet.LegacyRepoName)
+	if _, err := InitBareShare(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	coord, err := Start(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := store.NewDoc(store.TypeDoc, "legacy-note", "Legacy Note")
+	d.AddParagraph("seeded under main-share.git")
+	if err := coord.Store.Save(d, cfg.Actor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coord.Repo.CommitAll(cfg.Actor, "seed"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coord.SyncOnce(); err != nil {
+		t.Fatal(err)
+	}
+
+	ca, ident := teamCA(t, dir)
+	gitSrv, err := leetNet.ServeGit("127.0.0.1:0", ident.ServerTLSConfig(), bareRootFor(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gitSrv.Close()
+
+	clientID, err := ca.Issue("joiner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leetNet.InstallTransport(clientID.TLSConfig())
+	client, err := Start(config.Default(filepath.Join(dir, "joiner"), "human:maya"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := leetNet.ShareRemote(gitSrv.Addr().String(), leetNet.DefaultRepoPath)
+	if err := client.Repo.AddRemote("origin", remote); err != nil {
+		t.Fatal(err)
+	}
+	client.Cfg.MainShare = remote
+	res, err := client.SyncOnce()
+	if err != nil {
+		t.Fatalf("legacy main-share.git served as /main.git: %v", err)
+	}
+	if !res.Pulled {
+		t.Fatalf("expected a pull, got %+v", res)
+	}
+	if got, err := client.Store.Load("legacy-note"); err != nil || !strings.Contains(got.Blocks[0].Content, "main-share.git") {
+		t.Fatalf("legacy share content missing: %v", err)
+	}
+}
+
+func teamCA(t *testing.T, dir string) (*leetNet.CA, *leetNet.Identity) {
+	t.Helper()
+	ca, err := leetNet.CreateCA(filepath.Join(dir, "ca"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ident, err := ca.Issue("coordinator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ca, ident
 }
 
 func TestServiceFileContent(t *testing.T) {

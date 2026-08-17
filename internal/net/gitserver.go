@@ -251,9 +251,29 @@ type repoLoader string
 // Load returns a storer for the bare repo at the endpoint's path, or
 // transport.ErrRepositoryNotFound when it does not exist.
 func (l repoLoader) Load(ep *transport.Endpoint) (storer.Storer, error) {
-	dir := filepath.Join(string(l), filepath.FromSlash(ep.Path))
+	dir := joinRepo(string(l), ep.Path)
+	if st, err := openBare(dir); err == nil {
+		return st, nil
+	}
+	// v0.1.0 wizard created main-share.git but joiners request /main.git.
+	// Serve the legacy name from the same root so existing coordinators
+	// keep working after upgrade without a rename.
+	if filepath.Base(strings.Trim(ep.Path, "/")) == DefaultRepoName {
+		if st, err := openBare(filepath.Join(string(l), LegacyRepoName)); err == nil {
+			return st, nil
+		}
+	}
+	return nil, transport.ErrRepositoryNotFound
+}
+
+func joinRepo(root, repoPath string) string {
+	rel := strings.Trim(filepath.FromSlash(repoPath), string(filepath.Separator))
+	return filepath.Join(root, rel)
+}
+
+func openBare(dir string) (storer.Storer, error) {
 	if _, err := os.Stat(filepath.Join(dir, "config")); err != nil {
-		return nil, transport.ErrRepositoryNotFound
+		return nil, err
 	}
 	return filesystem.NewStorage(osfs.New(dir), cache.NewObjectLRUDefault()), nil
 }

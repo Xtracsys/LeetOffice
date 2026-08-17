@@ -62,7 +62,7 @@ func (n *Node) serveCoordinator(ctx context.Context) error {
 	enrollPort := 0
 	if n.Cfg.EnrollmentSecret != "" {
 		enr, err := leetNet.NewEnrollmentServer(ca, n.Cfg.EnrollmentSecret,
-			n.Cfg.Listen.Enroll, coord.EnrollmentTLSConfig(), portOf(gitSrv.Addr()))
+			n.Cfg.Listen.Enroll, coord.EnrollmentTLSConfig(), portOf(gitSrv.Addr()), shareRepoPath(n.Cfg))
 		if err != nil {
 			return fmt.Errorf("enrollment: %w", err)
 		}
@@ -106,12 +106,31 @@ func (n *Node) startClient() error {
 	return nil
 }
 
-// bareRootFor extracts the local bare-repo directory from a file:// share.
+// bareRootFor is the directory ServeGit should treat as its root: the
+// parent of the file:// share. ServeGit joins root + requested path
+// (/main.git), so the root must be the folder that CONTAINS the bare
+// repo — not the repo itself. v0.1.0 passed the repo path, and joiners
+// looking for /main.git hit <share>/main.git → "repository not found".
 func bareRootFor(cfg *config.Config) string {
 	if !strings.HasPrefix(cfg.MainShare, "file://") {
 		return ""
 	}
-	return strings.TrimPrefix(cfg.MainShare, "file://")
+	share := strings.TrimPrefix(cfg.MainShare, "file://")
+	if share == "" {
+		return ""
+	}
+	return filepath.Dir(share)
+}
+
+// shareRepoPath is the leet:// path enrollment advertises, derived from
+// the coordinator's file:// share (main.git or the v0.1.0 main-share.git).
+func shareRepoPath(cfg *config.Config) string {
+	raw := strings.TrimPrefix(cfg.MainShare, "file://")
+	name := filepath.Base(raw)
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return leetNet.DefaultRepoPath
+	}
+	return leetNet.RepoPath(name)
 }
 
 func portOf(addr net.Addr) int {

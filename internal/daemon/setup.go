@@ -100,7 +100,7 @@ func (d *Daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func wizardPaths(storeDir string) (share, identity string) {
 	parent := filepath.Dir(storeDir)
-	return filepath.Join(parent, "main-share.git"), filepath.Join(parent, ".leetoffice-identity")
+	return filepath.Join(parent, leetNet.DefaultRepoName), filepath.Join(parent, ".leetoffice-identity")
 }
 
 // CreateTeam builds a coordinator node config: local main share, enrollment
@@ -126,7 +126,7 @@ func JoinTeam(cfgPath, storeDir, actor, coordinator, secret string) error {
 	cfg := config.Default(storeDir, actor)
 	_, identity := wizardPaths(storeDir)
 	cfg.IdentityDir = identity
-	id, gitAddr, err := leetNet.Enroll(coordinator, cfg.NodeID, secret, "")
+	id, info, err := leetNet.Enroll(coordinator, cfg.NodeID, secret, "")
 	if err != nil {
 		return fmt.Errorf("enrollment rejected: %w", err)
 	}
@@ -135,7 +135,10 @@ func JoinTeam(cfgPath, storeDir, actor, coordinator, secret string) error {
 	}
 	// The share URL must point at the GIT service, not the enrollment port
 	// we just talked to — the coordinator tells us where git lives, and we
-	// only fall back to the default port for older coordinators.
+	// only fall back to the default port for older coordinators. GitPath
+	// is the real repo name (main.git, or main-share.git on a v0.1.0
+	// coordinator); empty means a pre-fix coordinator, so /main.git.
+	gitAddr := info.GitAddr
 	if gitAddr == "" {
 		host, _, splitErr := net.SplitHostPort(coordinator)
 		if splitErr != nil {
@@ -143,7 +146,7 @@ func JoinTeam(cfgPath, storeDir, actor, coordinator, secret string) error {
 		}
 		gitAddr = net.JoinHostPort(host, fmt.Sprint(leetNet.DefaultPort))
 	}
-	cfg.MainShare = fmt.Sprintf("%s://%s/main.git", leetNet.Scheme, gitAddr)
+	cfg.MainShare = leetNet.ShareRemote(gitAddr, info.GitPath)
 	return cfg.Save(cfgPath)
 }
 

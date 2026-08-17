@@ -126,7 +126,7 @@ func cmdInit(args []string) error {
 	storeDir := fs.String("store", defaultStoreDir(), "store directory")
 	actor := fs.String("actor", "", "actor id, e.g. human:josh")
 	coordinator := fs.Bool("coordinator", false, "make this node the coordinator")
-	share := fs.String("share", "", "main share URL (default: sibling main-share.git when coordinator)")
+	share := fs.String("share", "", "main share URL (default: sibling main.git when coordinator)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func cmdInit(args []string) error {
 	if *coordinator {
 		cfg.Role = "coordinator"
 		if *share == "" {
-			*share = "file://" + filepath.Join(filepath.Dir(*storeDir), "main-share.git")
+			*share = "file://" + filepath.Join(filepath.Dir(*storeDir), leetNet.DefaultRepoName)
 		}
 		cfg.MainShare = *share
 		if _, err := daemon.InitBareShare(cfg); err != nil {
@@ -349,7 +349,7 @@ func cmdEnroll(args []string) error {
 	if *coordinator == "" || *secret == "" {
 		return fmt.Errorf("enroll needs --coordinator host:port and --secret")
 	}
-	id, gitAddr, err := leetNet.Enroll(*coordinator, cfg.NodeID, *secret, "")
+	id, info, err := leetNet.Enroll(*coordinator, cfg.NodeID, *secret, "")
 	if err != nil {
 		return fmt.Errorf("enrollment rejected: %w", err)
 	}
@@ -358,6 +358,7 @@ func cmdEnroll(args []string) error {
 	}
 	// the share URL must target the git service (the coordinator tells us
 	// where it is), not the enrollment port we just used
+	gitAddr := info.GitAddr
 	if gitAddr == "" {
 		host, _, splitErr := net.SplitHostPort(*coordinator)
 		if splitErr != nil {
@@ -365,7 +366,7 @@ func cmdEnroll(args []string) error {
 		}
 		gitAddr = net.JoinHostPort(host, fmt.Sprint(leetNet.DefaultPort))
 	}
-	cfg.MainShare = fmt.Sprintf("%s://%s/main.git", leetNet.Scheme, gitAddr)
+	cfg.MainShare = leetNet.ShareRemote(gitAddr, info.GitPath)
 	if err := cfg.Save(*cfgPath); err != nil {
 		return err
 	}

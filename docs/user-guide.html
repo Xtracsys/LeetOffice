@@ -139,7 +139,7 @@ go build -o leetd ./cmd/leetd   <span class="c"># pure Go, no cgo, no system dep
  <table>
   <tr><th>Your workspace</th><td><code>~/LeetOffice</code> (default; a git repository — your audit trail)</td></tr>
   <tr><th>Node config</th><td><code>~/.config/leetoffice/node.json</code></td></tr>
-  <tr><th>Team share (coordinator)</th><td><code>~/main-share.git</code> (a bare repo peers sync to)</td></tr>
+  <tr><th>Team share (coordinator)</th><td><code>~/main.git</code> (a bare repo peers sync to)</td></tr>
   <tr><th>Identity / certificates</th><td><code>~/.leetoffice-identity</code> — back this up; it's your node's membership</td></tr>
  </table>
 </section>
@@ -246,7 +246,7 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
  </ul>
  <h2>Backups</h2>
  <p>Your entire team's world is two folders: the store (default <code>~/LeetOffice</code>)
- and the share (<code>~/main-share.git</code> on the coordinator). Both are plain git
+ and the share (<code>~/main.git</code> on the coordinator). Both are plain git
  repos — copy them to any backup disk (encrypting that disk is a good idea) and you've
  backed up everything, history included.</p>
 </section>
@@ -271,12 +271,19 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
  <tr><th>Messages/docs not appearing on the other machine</th>
      <td>Check History on both — sync errors log there. Confirm both nodes' Settings show
      the same team share. <b>sync now</b> forces a cycle.</td></tr>
+ <tr><th>Joined node logs <code>repository not found</code></th>
+     <td>v0.1.0 named the coordinator share <code>~/main-share.git</code> while joiners
+     asked for <code>/main.git</code>. Upgrade the coordinator (this build serves both
+     names). Or migrate: <code>mv ~/main-share.git ~/main.git</code>, set
+     <code>main_share</code> in <code>~/.config/leetoffice/node.json</code> to
+     <code>file://…/main.git</code>, restart. Already-joined clients keep their
+     <code>leet://host:7666/main.git</code> URL.</td></tr>
  <tr><th>Upgrade</th>
      <td>Replace the binary, restart (or it restarts itself if always-on). Stores are
      forward-compatible; <code>leetd check</code> self-tests.</td></tr>
  <tr><th>Full uninstall</th>
      <td><code>leetd uninstall</code> (service), delete the binary, and — if you really
-     want everything gone — <code>~/LeetOffice</code>, <code>~/main-share.git</code>,
+     want everything gone — <code>~/LeetOffice</code>, <code>~/main.git</code>,
      <code>~/.config/leetoffice</code>, <code>~/.leetoffice-identity</code>.</td></tr>
  </table>
  <h2>Where to get help</h2>

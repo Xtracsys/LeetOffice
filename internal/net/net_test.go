@@ -144,7 +144,7 @@ func TestEnrollment(t *testing.T) {
 	ca, coord := teamFixture(t, dir)
 	const secret = "one-time-team-secret"
 
-	es, err := NewEnrollmentServer(ca, secret, "127.0.0.1:0", coord.EnrollmentTLSConfig(), 7418)
+	es, err := NewEnrollmentServer(ca, secret, "127.0.0.1:0", coord.EnrollmentTLSConfig(), 7418, "")
 	if err != nil {
 		t.Fatalf("NewEnrollmentServer: %v", err)
 	}
