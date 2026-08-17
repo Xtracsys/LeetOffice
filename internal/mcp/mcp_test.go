@@ -169,6 +169,41 @@ func TestWriteReadAuditDiffFlow(t *testing.T) {
 	}
 }
 
+// TestWriteDocReplaceJSONBoolean: MCP clients send replace as a JSON
+// boolean. Treating it as a string meant only the literal "true" replaced
+// and true appended a new block.
+func TestWriteDocReplaceJSONBoolean(t *testing.T) {
+	srv, st, _ := newTestServer(t)
+	callTool(t, srv, "write_doc", map[string]any{
+		"id_or_slug": "notes", "content": "original"})
+	d, err := st.Load("notes")
+	if err != nil || len(d.Blocks) != 1 {
+		t.Fatalf("seed: %v blocks=%d", err, len(d.Blocks))
+	}
+	id := d.Blocks[0].ID
+
+	callTool(t, srv, "write_doc", map[string]any{
+		"id_or_slug": "notes", "block_id": id, "content": "replaced", "replace": true})
+	d, _ = st.Load("notes")
+	if len(d.Blocks) != 1 || d.Blocks[0].Content != "replaced" {
+		t.Fatalf("JSON true did not replace: %+v", d.Blocks)
+	}
+
+	callTool(t, srv, "write_doc", map[string]any{
+		"id_or_slug": "notes", "block_id": id, "content": "from-string", "replace": "true"})
+	d, _ = st.Load("notes")
+	if len(d.Blocks) != 1 || d.Blocks[0].Content != "from-string" {
+		t.Fatalf("string true did not replace: %+v", d.Blocks)
+	}
+
+	callTool(t, srv, "write_doc", map[string]any{
+		"id_or_slug": "notes", "block_id": id, "content": "appended"})
+	d, _ = st.Load("notes")
+	if len(d.Blocks) != 2 {
+		t.Fatalf("omit replace should append: %d blocks", len(d.Blocks))
+	}
+}
+
 func TestCreateTaskAndLink(t *testing.T) {
 	srv, st, _ := newTestServer(t)
 

@@ -1,5 +1,5 @@
 // Package mcp implements the LeetOffice MCP server (M10/M11, BUILD_SPEC §5):
-// the 7-tool agent surface spoken as JSON-RPC 2.0 over stdio and HTTP, per the
+// the 9-tool agent surface spoken as JSON-RPC 2.0 over stdio and HTTP, per the
 // Model Context Protocol. Every write is attributed to the actor injected at
 // server construction (D7 — agents never self-report identity) and lands in
 // the git audit trail.
@@ -294,6 +294,20 @@ func argInt(args map[string]any, key string, def int) int {
 		return int(f)
 	}
 	return def
+}
+
+// argBool accepts a JSON boolean or the strings "true"/"1" (MCP clients
+// disagree on whether replace is typed). A JSON true used to be ignored
+// because write_doc only compared the string "true".
+func argBool(args map[string]any, key string) bool {
+	switch v := args[key].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true") || v == "1"
+	default:
+		return false
+	}
 }
 
 // commit saves the doc and commits it attributed to the server actor (D7).

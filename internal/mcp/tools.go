@@ -53,7 +53,7 @@ func (s *Server) toolWriteDoc(args map[string]any) (any, error) {
 	key := argStr(args, "id_or_slug")
 	content := argStr(args, "content")
 	blockID := argStr(args, "block_id")
-	replace := argStr(args, "replace") == "true"
+	replace := argBool(args, "replace")
 
 	d, err := s.store.Resolve(key)
 	if err != nil {
