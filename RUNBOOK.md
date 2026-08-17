@@ -20,7 +20,7 @@ Ensure the build machine has:
 - *(Optional, for RAG)* **Ollama** running locally with the `nomic-embed-text` embedding model
 - macOS, Linux, or Windows
 
-> **No cmake, no pkg-config, no cgo, no system-git requirement.** The Go stack is pure-Go (go-git, modernc sqlite), so `go build` needs nothing beyond the Go toolchain. Git server capability ships in-process via go-git (the on-prem git solution).
+> **No cmake, no pkg-config, no cgo, no system-git requirement.** The Go stack is pure-Go (go-git, hashicorp/mdns), so `go build` needs nothing beyond the Go toolchain. Git server capability ships in-process via go-git (the on-prem git solution). There is no SQLite/`modernc.org/sqlite` in v0.1 — RAG is in-memory.
 
 ## 2. SOURCE OF TRUTH — READ THESE FIRST
 
@@ -59,15 +59,15 @@ Implement in this order. After each phase, run its gate before proceeding.
 - **mDNS discovery** (`_leetoffice._tcp`).
 - **Enrollment:** new node presents one-time secret → coordinator issues **mTLS cert** from a local CA.
 - **mTLS** on all node-to-node connections. Wrong secret / no cert → rejected.
-- **Sync transport:** git over SSH (authenticated with the node's identity) or the mTLS channel.
+- **Sync transport:** `leet://` over mTLS (go-git custom transport). Not SSH.
 - **Role promotion / failover:** any client can be promoted to coordinator; store stays consistent.
 - **Gate:** two nodes discover + sync over mTLS; a rogue node is rejected; promotion works.
 
 ### Phase 4 — MCP server & tools (`leet-mcp`)
-- Implement the **7 MCP tools** with the exact contracts (BUILD_SPEC §5): `search`, `read_doc`, `write_doc`, `create_task`, `link`, `audit_query`, `diff`.
+- Implement the **9 MCP tools** with the exact contracts (BUILD_SPEC §5): `search`, `read_doc`, `write_doc`, `create_task`, `link`, `audit_query`, `diff`, `list_channels`, `send_message`.
 - Every write is **attributed** (inject `actor` from the authenticated connection) + committed.
 - Expose over stdio and HTTP so Hermes / Claude Code / Codex can connect.
-- **Gate:** all 7 tools work end-to-end against the store; agent writes appear attributed in the audit trail.
+- **Gate:** all 9 tools work end-to-end against the store; agent writes appear attributed in the audit trail.
 
 ### Phase 5 — Memory, digest, hygiene (`leet-memory`)
 - **Memory synthesis** → `MEMORY.md`, near-continuous (debounced on change).
@@ -76,19 +76,19 @@ Implement in this order. After each phase, run its gate before proceeding.
 - **Gate:** `MEMORY.md` updates on change; digest produced; a deliberately broken link is flagged.
 
 ### Phase 6 — RAG / semantic search (`leet-rag`)
-- Embed every block via **Ollama** (local); vectors in SQLite.
+- Embed every block via **Ollama** when it is up; keep the index **in memory** and rebuild it per query. When Ollama is down, **keyword fallback** must still satisfy the `search` contract.
 - **Memory-boosted ranking:** `MEMORY.md` + domain-summary docs rank higher.
 - Exclude encrypted fields from the index.
-- **Gate:** `search` returns relevant blocks with memory boosted to top.
+- **Gate:** `search` returns relevant blocks with memory boosted to top (keyword path works without Ollama).
 
 ### Phase 7 — Registry (`leet-registry`)
 - Implement the tool/skill **package format** (manifest.json) and **import/export**.
 - **Stability lifecycle:** `experimental → stable` via clean-use counting, auto-promote at threshold (default 10); reset on failure/revert.
 - **Gate:** a skill imports, is used N times, and auto-promotes to stable.
 
-### Phase 8 — Human client (`app/`)
-- **Electron + React** bundled app (pins its Chromium).
-- Daemon serves the editor UI over localhost; Electron wraps it; editing updates embedded JSON → audited commit.
+### Phase 8 — Human client (`app/` + `internal/httpui`)
+- **Electron** thin wrapper (`app/main.js`) pins its Chromium. There is no React app under `app/src/`.
+- Daemon `internal/httpui` serves the editor UI over localhost; Electron loads that URL; editing updates embedded JSON → audited commit.
 - **Read-only browser fallback:** the tabbed HTML opens in any browser with no write path.
 - **Gate:** edit works in the bundled app; browser shows read-only content; no reliance on the system browser.
 
@@ -105,7 +105,7 @@ Run **BUILD_SPEC §12** acceptance criteria (A–G) and **§13** test plan. Do n
 - Concurrent same-block edits flag a conflict (both retained) — never silent overwrite.
 - A node taken offline then rejoined catches up fully with zero manual steps.
 - Rogue node rejected; mTLS mutual auth works.
-- All 7 MCP tools pass; agent writes attributed.
+- All 9 MCP tools pass; agent writes attributed.
 - Memory synthesizes near-continuously; digest + hygiene run.
 - Registry auto-promotes at the threshold.
 - Bundled app edits; browser fallback is read-only.

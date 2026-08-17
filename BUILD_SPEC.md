@@ -2,7 +2,8 @@
 
 > **Companion to:** `REQUIREMENTS.md` (the what/why). This file is the *how* — precise, buildable contracts.
 > **Companion to:** `RUNBOOK.md` (a prompt any AI can consume to build this from scratch).
-> **Version:** 0.1 · **Status:** implemented (v1 — see README.md; phase gates verified by `go test ./...`)
+> **Version:** 0.1 · **Status:** implemented (v1 — see README.md; phase gates verified by `go test -short ./...`)
+> **Contract:** the Go sources win when this file disagrees with the implementation.
 > **License target:** Apache-2.0
 
 ## 1. Purpose
@@ -26,15 +27,16 @@ Turn the LeetOffice requirements into **concrete, implementable contracts** so t
 | mTLS + certs | **`crypto/tls`** + local CA (`crypto/x509`) | Mutual TLS, self-contained, no cloud |
 | mDNS discovery | **`hashicorp/mdns`** (Go) | Zero-config node discovery on LAN |
 | MCP server | **MCP over stdio + HTTP** (spec v1.x) | Any MCP client (Hermes, Claude Code, Codex) |
-| Desktop app (`leetoffice`) | **Electron + React + TypeScript** | Pins its own Chromium → immune to system-browser updates |
+| Desktop app (`leetoffice`) | **Electron** wrapping the daemon's localhost UI (`app/main.js`) | Pins its own Chromium → immune to system-browser updates. No React/`app/src` |
 | Bundled engine | **Electron** | Version-locked renderer (D14 requirement) |
-| Embeddings / LLM | **Ollama** (local) | Fully local RAG; model `nomic-embed-text` |
-| Metadata / vector index | **SQLite** via `modernc.org/sqlite` (pure Go, no cgo) + FTS5 | Local index alongside git-backed files |
+| Human UI | **`internal/httpui`** (Go HTML) | Daemon serves the editor over localhost; Electron is a thin shell |
+| Embeddings / LLM | **Ollama** (local, optional) | Fully local RAG when up; model `nomic-embed-text` |
+| Vector index | **In-memory**, rebuilt per query | Keyword fallback when Ollama is down. SQLite/`modernc.org/sqlite` is not in v0.1 |
 | Field-level encryption | **`crypto/aes` + GCM** (Go stdlib) | Sensitive JSON fields encrypted at rest |
 
 **Why not CRDT?** Store is file-based (D1). Realtime co-editing can be added later via Yjs if needed; v1 uses short-cadence git sync (D5).
 
-**No cgo / native build deps.** The Go stack uses pure-Go libraries (go-git, modernc sqlite), so the build needs **no cmake, no pkg-config** — just the Go toolchain.
+**No cgo / native build deps.** The Go stack uses pure-Go libraries (go-git, hashicorp/mdns), so the build needs **no cmake, no pkg-config** — just the Go toolchain.
 
 ## 3. Repository Layout
 
@@ -47,12 +49,16 @@ leetoffice/
 │   ├── store/                   # store, schema, block model, links, audit
 │   ├── sync/                    # go-git, merge driver, monitor, auto-rejoin
 │   ├── net/                     # mDNS, mTLS CA, enrollment, protocol
-│   ├── mcp/                     # MCP server + tool implementations
+│   ├── mcp/                     # MCP server + 9 tools
 │   ├── memory/                  # synthesis, digest, hygiene
-│   ├── rag/                     # embeddings, index, semantic search
-│   └── registry/                # tools/skills registry + stability lifecycle
-├── app/                         # Electron + React frontend (leetoffice)
-│   ├── src/
+│   ├── rag/                     # in-memory embeddings + keyword fallback
+│   ├── registry/                # tools/skills registry + stability lifecycle
+│   ├── chat/                    # team channels (documents + message blocks)
+│   ├── httpui/                  # localhost human UI (daemon-served)
+│   ├── daemon/                  # composition, wizard, service
+│   └── config/                  # node.json
+├── app/                         # thin Electron wrapper (no React)
+│   ├── main.js
 │   └── package.json
 ├── tools/                       # bundled tools (registry)
 ├── skills/                      # bundled skills (registry)
@@ -118,7 +124,7 @@ The JSON lives in a `<script type="application/json" id="leet-doc">` inside each
 ### 4.3 Block model & block-level links (D15)
 
 - Every block has a stable `id`. Links attach at the **block** level.
-- A link `{target_doc, target_block, dir}` in block A **creates a backlink** in block B (`dir:"in"`). The graph is bidirectional and reconstructed by scanning links (or cached in SQLite).
+- A link `{target_doc, target_block, dir}` in block A **creates a backlink** in block B (`dir:"in"`). The graph is bidirectional and reconstructed by scanning links.
 - The `link` MCP tool (see §5) creates both directions atomically.
 - **Hygiene** (M19) reports any link whose `target_doc`/`target_block` no longer resolves.
 
@@ -179,7 +185,7 @@ Nodes announce `_leetoffice._tcp`, advertising `{node_id, host, port, role, cert
 4. Rogue nodes (no valid cert / wrong secret) are rejected; their traffic is unreadable.
 
 ### 6.4 Sync transport
-- **git over SSH**, authenticating with the node's mTLS identity (SSH key issued at enrollment), or a minimal custom transport over the mTLS channel. SSH is the v1 default (battle-tested).
+- **`leet://` over mTLS** — a go-git custom transport (`internal/net`). The coordinator serves the bare share with `ServeGit`; clients `InstallTransport` after enrollment. There is no SSH transport in v0.1.
 - **Cadence:** every 5 seconds when online (D5). Immediate on rejoin.
 
 ### 6.5 Auto-rejoin (D6/M8)
@@ -237,9 +243,9 @@ _updated 2026-08-15 12:35Z_
 A cron job writes `_audit/DIGEST-YYYY-MM-DD.md` from the audit trail: what changed, by whom, new tasks, notable links.
 
 ### 8.3 RAG / semantic search (D17)
-- **Index:** every block embedded via **Ollama** (`nomic-embed-text`); vectors in SQLite.
+- **Index:** in-memory, **rebuilt per query** from the canonical embedded JSON. When Ollama is up, blocks are embedded with `nomic-embed-text`; when it is down, `search` uses the always-on keyword fallback. There is no SQLite vector store in v0.1.
 - **Boost:** `MEMORY.md` and domain-summary docs get a score bonus so curated context ranks first.
-- **Query:** `search` embeds the query, retrieves top-K, applies boost, returns blocks with scores.
+- **Query:** `search` retrieves top-K (semantic or keyword), applies boost, returns blocks with scores.
 - Encrypted fields are excluded from the index.
 
 ## 9. Skills & Tools Registry (D11/D12)
@@ -290,8 +296,8 @@ skills/site-imaging/
 
 ## 11. Human Client (D14)
 
-- **Bundled Electron app** pins its Chromium → immune to system-browser updates.
-- The daemon serves the **editor UI** over `localhost`; Electron wraps it. Editing updates the embedded JSON → git commit (audited).
+- **Bundled Electron app** (`app/main.js`) pins its Chromium → immune to system-browser updates. It is a thin wrapper — **not** a React/TypeScript app under `app/src/`.
+- The daemon's **`internal/httpui`** serves the editor over `localhost`; Electron loads that URL and can spawn the bundled `leetd`. Editing updates the embedded JSON → git commit (audited).
 - **Read-only browser fallback:** the tabbed HTML opens in any browser with no write path.
 
 ## 12. Acceptance Criteria (verifiable "done")
@@ -313,7 +319,7 @@ skills/site-imaging/
 - [ ] Promoting a client node to coordinator (failover) keeps the store consistent.
 
 **D. Agents**
-- [ ] All 7 MCP tools (search, read, write, create_task, link, audit_query, diff) work against the store.
+- [ ] All 9 MCP tools (search, read_doc, write_doc, create_task, link, audit_query, diff, list_channels, send_message) work against the store.
 - [ ] Agent writes are attributed in the audit trail.
 
 **E. Memory/RAG**
