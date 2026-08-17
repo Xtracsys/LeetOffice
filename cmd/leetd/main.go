@@ -123,7 +123,7 @@ func loadConfig(args []string) (*config.Config, string) {
 
 func cmdInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	storeDir := fs.String("store", defaultStoreDir(), "store directory")
+	storeDir := fs.String("store", config.DefaultStoreDir(), "store directory")
 	actor := fs.String("actor", "", "actor id, e.g. human:josh")
 	coordinator := fs.Bool("coordinator", false, "make this node the coordinator")
 	share := fs.String("share", "", "main share URL (default: sibling main.git when coordinator)")
@@ -161,14 +161,6 @@ func cmdInit(args []string) error {
 	fmt.Printf("node initialized: %s\n  config: %s\n  store:  %s\n  role:   %s\n  share:  %s\n",
 		cfg.NodeID, cfgPath, cfg.StoreDir, cfg.Role, or(cfg.MainShare, "(none)"))
 	return nil
-}
-
-func defaultStoreDir() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "leetoffice-store"
-	}
-	return filepath.Join(wd, "leetoffice-store")
 }
 
 func or(s, fallback string) string {

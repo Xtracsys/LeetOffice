@@ -100,7 +100,7 @@ func (d *Daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func wizardPaths(storeDir string) (share, identity string) {
 	parent := filepath.Dir(storeDir)
-	return filepath.Join(parent, leetNet.DefaultRepoName), filepath.Join(parent, ".leetoffice-identity")
+	return filepath.Join(parent, leetNet.DefaultRepoName), config.IdentityDirFor(storeDir)
 }
 
 // CreateTeam builds a coordinator node config: local main share, enrollment
@@ -179,15 +179,8 @@ func seedWelcome(node *Node, actor string) {
 		"Create channels for anything — design, ops, incidents. Agents can post here too via the send_message MCP tool.")
 }
 
-// DefaultStoreDir is where the wizard puts a store by default.
-func DefaultStoreDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		wd, _ := os.Getwd()
-		return filepath.Join(wd, "LeetOffice")
-	}
-	return filepath.Join(home, "LeetOffice")
-}
+// DefaultStoreDir is where the wizard (and leetd init) put a store.
+func DefaultStoreDir() string { return config.DefaultStoreDir() }
 
 // --- wizard HTTP surface ----------------------------------------------------
 

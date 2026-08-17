@@ -67,8 +67,33 @@ func home() string {
 	return h
 }
 
+// DefaultStoreDir is the product store location (~/LeetOffice). The
+// first-run wizard and `leetd init` both use this so mixing them finds
+// the same files.
+func DefaultStoreDir() string {
+	h, err := os.UserHomeDir()
+	if err != nil || h == "" {
+		wd, _ := os.Getwd()
+		return filepath.Join(wd, "LeetOffice")
+	}
+	return filepath.Join(h, "LeetOffice")
+}
+
+// IdentityDirFor is the identity directory for a store: a sibling
+// .leetoffice-identity outside the git worktree. Wizard and leetd init
+// must agree — mixing them used to look in identity vs .leetoffice-identity.
+func IdentityDirFor(storeDir string) string {
+	if storeDir == "" {
+		storeDir = DefaultStoreDir()
+	}
+	return filepath.Join(filepath.Dir(storeDir), ".leetoffice-identity")
+}
+
 // Default builds a sensible fat-client config for a store dir.
 func Default(storeDir, actor string) *Config {
+	if storeDir == "" {
+		storeDir = DefaultStoreDir()
+	}
 	c := &Config{
 		NodeID:       hostOrDefault(),
 		Actor:        actor,
@@ -76,7 +101,7 @@ func Default(storeDir, actor string) *Config {
 		StoreDir:     storeDir,
 		MainShare:    "",
 		SyncEverySec: DefaultSyncEvery,
-		IdentityDir:  filepath.Join(storeDir, "..", "identity"),
+		IdentityDir:  IdentityDirFor(storeDir),
 	}
 	c.Listen.HTTP = DefaultHTTPListen
 	c.Listen.Git = DefaultGitListen
@@ -141,7 +166,7 @@ func (c *Config) fillDefaults() {
 		c.Ollama.Model = "nomic-embed-text"
 	}
 	if c.IdentityDir == "" {
-		c.IdentityDir = filepath.Join(c.StoreDir, "..", "identity")
+		c.IdentityDir = IdentityDirFor(c.StoreDir)
 	}
 	if c.Actor == "" {
 		c.Actor = "human:" + c.NodeID

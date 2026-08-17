@@ -53,6 +53,73 @@ func TestCreateTeamConfig(t *testing.T) {
 	}
 }
 
+// TestWizardAndInitAgreeOnLayout is the mixing gate: the wizard used
+// ~/LeetOffice + ~/.leetoffice-identity; leetd init used $PWD/leetoffice-store
+// + <store>/../identity. Both entry points must persist the same layout
+// so enroll/sync find the certs.
+func TestWizardAndInitAgreeOnLayout(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, "LeetOffice")
+
+	wPath := filepath.Join(dir, "wizard.json")
+	if _, err := CreateTeam(wPath, storeDir, "human:josh"); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	wizard, err := config.Load(wPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// leetd init builds the same config.Default(storeDir) the wizard wraps.
+	initCfg := config.Default(storeDir, "human:maya")
+	if initCfg.StoreDir != wizard.StoreDir {
+		t.Fatalf("store: init %q wizard %q", initCfg.StoreDir, wizard.StoreDir)
+	}
+	if initCfg.IdentityDir != wizard.IdentityDir {
+		t.Fatalf("identity: init %q wizard %q", initCfg.IdentityDir, wizard.IdentityDir)
+	}
+
+	wantIdent := filepath.Join(dir, ".leetoffice-identity")
+	if wizard.IdentityDir != wantIdent {
+		t.Fatalf("identity = %q, want %q", wizard.IdentityDir, wantIdent)
+	}
+	if strings.HasPrefix(wizard.IdentityDir, storeDir) {
+		t.Fatal("identity must live outside the store")
+	}
+
+	localPath := filepath.Join(dir, "local.json")
+	if err := CreateLocal(localPath, storeDir, "human:sam"); err != nil {
+		t.Fatal(err)
+	}
+	local, err := config.Load(localPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.IdentityDir != wizard.IdentityDir {
+		t.Fatalf("CreateLocal identity %q != wizard %q", local.IdentityDir, wizard.IdentityDir)
+	}
+
+	if !strings.HasSuffix(config.DefaultStoreDir(), "LeetOffice") {
+		t.Fatalf("DefaultStoreDir = %q, want …/LeetOffice", config.DefaultStoreDir())
+	}
+	if config.DefaultStoreDir() != DefaultStoreDir() {
+		t.Fatal("daemon.DefaultStoreDir drifted from config.DefaultStoreDir")
+	}
+
+	// fillDefaults must reconstruct the same path when identity_dir is omitted
+	blank := &config.Config{StoreDir: storeDir}
+	if err := blank.Save(filepath.Join(dir, "blank.json")); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := config.Load(filepath.Join(dir, "blank.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.IdentityDir != wantIdent {
+		t.Fatalf("fillDefaults identity = %q, want %q", reloaded.IdentityDir, wantIdent)
+	}
+}
+
 func TestJoinTeamEnrollsAndConfigures(t *testing.T) {
 	dir := t.TempDir()
 	ca, err := leetNet.CreateCA(filepath.Join(dir, "ca"))
