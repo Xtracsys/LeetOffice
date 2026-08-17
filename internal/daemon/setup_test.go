@@ -372,11 +372,8 @@ func TestWizardCreatedTeamJoinSyncs(t *testing.T) {
 		t.Fatalf("joiner share = %s, want %s", joined.MainShare, wantShare)
 	}
 
-	id, err := leetNet.LoadIdentity(joined.IdentityDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	leetNet.InstallTransport(id.TLSConfig())
+	// Start (the cmdSync shape) must install leet:// itself — do not
+	// call InstallTransport in the harness (v0.1.1 CLI gap).
 	client, err := Start(joined)
 	if err != nil {
 		t.Fatalf("start joiner: %v", err)
@@ -432,16 +429,18 @@ func TestLegacyShareNameJoinSyncs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leetNet.InstallTransport(clientID.TLSConfig())
-	client, err := Start(config.Default(filepath.Join(dir, "joiner"), "human:maya"))
-	if err != nil {
+	idDir := filepath.Join(dir, "joiner-id")
+	if err := clientID.Save(idDir); err != nil {
 		t.Fatal(err)
 	}
 	remote := leetNet.ShareRemote(gitSrv.Addr().String(), leetNet.DefaultRepoPath)
-	if err := client.Repo.AddRemote("origin", remote); err != nil {
+	jcfg := config.Default(filepath.Join(dir, "joiner"), "human:maya")
+	jcfg.MainShare = remote
+	jcfg.IdentityDir = idDir
+	client, err := Start(jcfg)
+	if err != nil {
 		t.Fatal(err)
 	}
-	client.Cfg.MainShare = remote
 	res, err := client.SyncOnce()
 	if err != nil {
 		t.Fatalf("legacy main-share.git served as /main.git: %v", err)
@@ -451,6 +450,74 @@ func TestLegacyShareNameJoinSyncs(t *testing.T) {
 	}
 	if got, err := client.Store.Load("legacy-note"); err != nil || !strings.Contains(got.Blocks[0].Content, "main-share.git") {
 		t.Fatalf("legacy share content missing: %v", err)
+	}
+}
+
+// TestStartSyncOnceLeetScheme is the cmdSync gap: daemon.Start + SyncOnce
+// with a leet:// main_share used to fail unsupported scheme "leet"
+// because InstallTransport lived only in startClient / StartLoops.
+func TestStartSyncOnceLeetScheme(t *testing.T) {
+	dir := t.TempDir()
+	coordStore := filepath.Join(dir, "coord", "LeetOffice")
+	if _, err := CreateTeam(filepath.Join(dir, "coord.json"), coordStore, "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(filepath.Join(dir, "coord.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	coord, err := Start(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedWelcome(coord, cfg.Actor)
+	if _, err := coord.SyncOnce(); err != nil {
+		t.Fatal(err)
+	}
+
+	ca, ident := teamCA(t, dir)
+	gitSrv, err := leetNet.ServeGit("127.0.0.1:0", ident.ServerTLSConfig(), bareRootFor(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gitSrv.Close()
+
+	clientID, err := ca.Issue("cli-sync")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idDir := filepath.Join(dir, "cli-id")
+	if err := clientID.Save(idDir); err != nil {
+		t.Fatal(err)
+	}
+
+	jcfg := config.Default(filepath.Join(dir, "cli-store"), "human:maya")
+	jcfg.MainShare = leetNet.ShareRemote(gitSrv.Addr().String(), leetNet.DefaultRepoPath)
+	jcfg.IdentityDir = idDir
+	node, err := Start(jcfg)
+	if err != nil {
+		t.Fatalf("Start (cmdSync shape): %v", err)
+	}
+	res, err := node.SyncOnce()
+	if err != nil {
+		t.Fatalf("SyncOnce leet://: %v", err)
+	}
+	if !res.Pulled {
+		t.Fatalf("expected a pull, got %+v", res)
+	}
+	if _, err := node.Store.Load("welcome"); err != nil {
+		t.Fatalf("cli sync did not pull welcome: %v", err)
+	}
+}
+
+func TestStartLeetShareRequiresIdentity(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Default(filepath.Join(dir, "store"), "human:maya")
+	cfg.MainShare = "leet://127.0.0.1:1/main.git"
+	cfg.IdentityDir = filepath.Join(dir, "missing-identity")
+	_, err := Start(cfg)
+	if err == nil || !strings.Contains(err.Error(), "leetd enroll") {
+		t.Fatalf("want enroll-first error, got %v", err)
 	}
 }
 

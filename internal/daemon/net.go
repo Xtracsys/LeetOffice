@@ -90,11 +90,10 @@ func (n *Node) serveCoordinator(ctx context.Context) error {
 func (n *Node) startClient(ctx context.Context) error {
 	fp := ""
 	if strings.HasPrefix(n.Cfg.MainShare, leetNet.Scheme+"://") {
-		id, err := leetNet.LoadIdentity(n.Cfg.IdentityDir)
+		id, err := installLeetTransport(n.Cfg)
 		if err != nil {
-			return fmt.Errorf("no node identity at %s — run `leetd enroll` first: %w", n.Cfg.IdentityDir, err)
+			return err
 		}
-		leetNet.InstallTransport(id.TLSConfig())
 		fp = id.Fingerprint()
 	}
 	// PresencePort is non-zero: hashicorp/mdns rejects port 0, which made
@@ -106,6 +105,19 @@ func (n *Node) startClient(ctx context.Context) error {
 	}
 	keepAnnounce(ctx, ann)
 	return nil
+}
+
+// installLeetTransport registers the leet:// go-git protocol using the
+// node's enrolled identity. daemon.Start calls this so one-shot CLI
+// commands (leetd sync, …) can fetch/push; startClient calls it again
+// (InstallProtocol is a map write — idempotent) before announcing.
+func installLeetTransport(cfg *config.Config) (*leetNet.Identity, error) {
+	id, err := leetNet.LoadIdentity(cfg.IdentityDir)
+	if err != nil {
+		return nil, fmt.Errorf("no node identity at %s — run `leetd enroll` first: %w", cfg.IdentityDir, err)
+	}
+	leetNet.InstallTransport(id.TLSConfig())
+	return id, nil
 }
 
 // keepAnnounce holds an mDNS announcer until ctx is cancelled. startClient

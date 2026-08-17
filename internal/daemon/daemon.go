@@ -53,6 +53,13 @@ func Start(cfg *config.Config) (*Node, error) {
 			return nil, err
 		}
 	}
+	// One-shot CLI (leetd sync, …) never reaches StartLoops/startClient,
+	// so a leet:// remote used to fail with unsupported scheme "leet".
+	if strings.HasPrefix(cfg.MainShare, leetNet.Scheme+"://") {
+		if _, err := installLeetTransport(cfg); err != nil {
+			return nil, err
+		}
+	}
 	actor := cfg.Actor
 	mcpSrv := mcp.NewServer(s, repo, searchBackend(cfg, s), actor)
 	return &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv, syncEveryCh: make(chan struct{}, 1)}, nil
