@@ -53,8 +53,9 @@ func (s *Store) Path(t DocType, slug string) string {
 	return filepath.Join(s.Root, typeDir(t), slug+".html")
 }
 
-// Save renders the doc to its HTML file and refreshes INDEX.md. Audit fields
-// (last_editor) are set here; last_commit is filled by the sync layer.
+// Save renders the doc to its HTML file and refreshes INDEX.md. Audit
+// last_editor is set here. last_commit is optional — git log is the
+// audit trail (D3); CommitAll must not rewrite docs after it commits.
 func (s *Store) Save(d *Doc, actor string) error {
 	if actor != "" {
 		d.Audit.LastEditor = actor

@@ -272,3 +272,56 @@ func TestIdleSyncReportsNoActivity(t *testing.T) {
 		}
 	}
 }
+
+// TestCommitAllLeavesCleanTree is the stampLastCommit gate: CommitAll used
+// to Save every doc with audit.last_commit set to the new SHA and leave
+// those writes uncommitted. Do not amend (D3). The tree must be clean so
+// the next cycle does not pick up leftover stamps.
+func TestCommitAllLeavesCleanTree(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := store.NewDoc(store.TypeDoc, "spec", "Spec")
+	d.AddParagraph("one")
+	if err := s.Save(d, "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.CommitAll("human:josh", "write spec"); err != nil {
+		t.Fatal(err)
+	}
+	assertClean(t, r, "after first CommitAll")
+
+	d, err = s.Load("spec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.AddParagraph("two")
+	if err := s.Save(d, "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.CommitAll("human:josh", "edit spec"); err != nil {
+		t.Fatal(err)
+	}
+	assertClean(t, r, "after second CommitAll")
+
+	if _, err := r.CommitAll("human:josh", "idle"); err != ErrNoChanges {
+		t.Fatalf("clean tree should be ErrNoChanges, got %v", err)
+	}
+}
+
+func assertClean(t *testing.T, r *Repo, when string) {
+	t.Helper()
+	st, err := r.wt.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.IsClean() {
+		t.Fatalf("%s: worktree dirty:\n%s", when, st)
+	}
+}

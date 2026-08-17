@@ -104,7 +104,8 @@ func actorSignature(actor string) *object.Signature {
 }
 
 // CommitAll stages everything and commits attributed to actor. Returns the
-// commit sha. ErrNoChanges if the tree is clean.
+// commit sha. ErrNoChanges if the tree is clean. Success leaves the
+// worktree clean — last_commit is not rewritten after the commit (D3).
 func (r *Repo) CommitAll(actor, msg string) (plumbing.Hash, error) {
 	if _, err := r.wt.Add("."); err != nil {
 		return plumbing.ZeroHash, err
@@ -123,29 +124,11 @@ func (r *Repo) CommitAll(actor, msg string) (plumbing.Hash, error) {
 	if err != nil {
 		return plumbing.ZeroHash, err
 	}
-	r.stampLastCommit(c, actor)
+	// Do not rewrite store files with audit.last_commit after this commit.
+	// Store.Save left every doc + INDEX.md uncommitted (and a second commit
+	// or amend would either pollute the audit trail or violate D3). git log
+	// is authoritative; last_commit on disk is informational and optional.
 	return c, nil
-}
-
-// stampLastCommit writes the commit sha into each saved doc's audit field.
-// It re-saves the docs touched by the commit and amends nothing — the sha is
-// informational for audit_query fallback, git log remains authoritative.
-func (r *Repo) stampLastCommit(sha plumbing.Hash, actor string) {
-	s, err := store.OpenStore(r.dir)
-	if err != nil {
-		return
-	}
-	docs, err := s.List()
-	if err != nil {
-		return
-	}
-	for _, d := range docs {
-		if d.Audit.LastCommit == sha.String() {
-			continue
-		}
-		d.Audit.LastCommit = sha.String()
-		_ = s.Save(d, actor) // best-effort; INDEX refresh is idempotent
-	}
 }
 
 // AddRemote registers (or replaces) the main-share remote.
