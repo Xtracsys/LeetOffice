@@ -64,7 +64,11 @@ write attributed to the agent, merge-safe against human edits.
 curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh
 ```
 
-**Homebrew** (once the tap ships): `brew install leetoffice/tap/leetd`
+**Homebrew** (macOS / Linux, no tap yet):
+
+```sh
+brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb
+```
 
 **Any platform, no script:** grab a binary from
 [releases](https://github.com/Xtracsys/LeetOffice/releases) —
