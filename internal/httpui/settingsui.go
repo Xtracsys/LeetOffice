@@ -150,6 +150,7 @@ func (u *UI) saveSettings(w http.ResponseWriter, r *http.Request) {
 	if name != "" {
 		u.Config.Actor = "human:" + name
 	}
+	oldEvery := u.Config.SyncEverySec
 	if n, err := strconv.Atoi(strings.TrimSpace(r.FormValue("sync_every_sec"))); err == nil && n >= 1 && n <= 600 {
 		u.Config.SyncEverySec = n
 	}
@@ -162,6 +163,9 @@ func (u *UI) saveSettings(w http.ResponseWriter, r *http.Request) {
 	if err := u.Config.Save(u.CfgPath); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if u.RescheduleSync != nil && u.Config.SyncEverySec != oldEvery {
+		u.RescheduleSync()
 	}
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }

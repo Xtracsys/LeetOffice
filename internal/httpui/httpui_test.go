@@ -227,7 +227,9 @@ func TestSettingsPageAndInvite(t *testing.T) {
 		t.Fatal("settings does not show the secret passed to the live server")
 	}
 
-	// saving identity + cadence persists
+	// saving identity + cadence persists and restarts the live ticker
+	var resched int
+	ui.RescheduleSync = func() { resched++ }
 	res2, err := h.Client().PostForm(h.URL+"/settings", url.Values{
 		"actor": {"maya"}, "sync_every_sec": {"15"},
 		"ollama_base": {ui.Config.Ollama.BaseURL}, "ollama_model": {ui.Config.Ollama.Model}})
@@ -238,5 +240,18 @@ func TestSettingsPageAndInvite(t *testing.T) {
 	saved := get(t, h, "/settings")
 	if !strings.Contains(saved, "value=\"maya\"") || !strings.Contains(saved, `value="15"`) {
 		t.Fatalf("settings not persisted:\n%.400s", saved)
+	}
+	if resched != 1 {
+		t.Fatalf("RescheduleSync after cadence change: %d", resched)
+	}
+	res3, err := h.Client().PostForm(h.URL+"/settings", url.Values{
+		"actor": {"maya"}, "sync_every_sec": {"15"},
+		"ollama_base": {ui.Config.Ollama.BaseURL}, "ollama_model": {ui.Config.Ollama.Model}})
+	if err != nil || res3.StatusCode != 200 {
+		t.Fatalf("save same cadence: %v %v", err, res3)
+	}
+	res3.Body.Close()
+	if resched != 1 {
+		t.Fatalf("RescheduleSync on unchanged cadence: %d", resched)
 	}
 }

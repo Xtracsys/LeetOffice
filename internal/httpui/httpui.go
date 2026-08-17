@@ -30,6 +30,10 @@ type UI struct {
 	// handleInviteRegen persists the new code (D8). Nil when enrollment
 	// is not running (tests, clients).
 	RotateEnrollment func(secret string)
+	// RescheduleSync restarts the daemon's sync ticker after saveSettings
+	// writes a new sync_every_sec. Nil when the UI is not wired to a live
+	// node (tests).
+	RescheduleSync func()
 }
 
 // Handler builds the HTTP routes.

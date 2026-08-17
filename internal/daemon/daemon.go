@@ -33,6 +33,9 @@ type Node struct {
 	MCP     *mcp.Server
 	cfgPath string
 	enroll  *leetNet.EnrollmentServer // live coordinator secret; rotated from settings
+	// syncEveryCh tells syncLoop to Reset the ticker from Cfg.SyncEverySec.
+	syncEveryCh chan struct{}
+	syncHook    func(reason string) // tests: fires at the start of each syncOnce
 }
 
 // Start opens the store and repo described by cfg.
@@ -52,7 +55,7 @@ func Start(cfg *config.Config) (*Node, error) {
 	}
 	actor := cfg.Actor
 	mcpSrv := mcp.NewServer(s, repo, searchBackend(cfg, s), actor)
-	return &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv}, nil
+	return &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv, syncEveryCh: make(chan struct{}, 1)}, nil
 }
 
 // StartAtPath opens the node described by a config file path.
@@ -103,6 +106,7 @@ func (n *Node) ServeHTTP() http.Handler {
 	if n.enroll != nil {
 		ui.RotateEnrollment = n.enroll.SetSecret
 	}
+	ui.RescheduleSync = n.RescheduleSync
 	mux.Handle("/", ui.Handler())
 	mux.Handle("/mcp", n.MCP.Handler())
 	mux.HandleFunc("/service/install", handleServiceInstall(n.Cfg))
@@ -128,18 +132,36 @@ func (n *Node) StartLoops(ctx context.Context) error {
 	return nil
 }
 
-func (n *Node) syncLoop(ctx context.Context) {
-	every := time.Duration(n.Cfg.SyncEverySec) * time.Second
-	if every <= 0 {
-		every = 5 * time.Second
+func (n *Node) syncEvery() time.Duration {
+	sec := n.Cfg.SyncEverySec
+	if sec <= 0 {
+		sec = config.DefaultSyncEvery
 	}
-	t := time.NewTicker(every)
+	return time.Duration(sec) * time.Second
+}
+
+// RescheduleSync restarts the running sync ticker from Cfg.SyncEverySec
+// so a settings save takes effect without restarting leetd.
+func (n *Node) RescheduleSync() {
+	if n.syncEveryCh == nil {
+		return
+	}
+	select {
+	case n.syncEveryCh <- struct{}{}:
+	default:
+	}
+}
+
+func (n *Node) syncLoop(ctx context.Context) {
+	t := time.NewTicker(n.syncEvery())
 	defer t.Stop()
 	n.syncOnce("timer")
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-n.syncEveryCh:
+			t.Reset(n.syncEvery())
 		case <-t.C:
 			n.syncOnce("timer")
 		}
@@ -162,6 +184,9 @@ func (n *Node) SyncOnce() (*leetSync.SyncResult, error) {
 }
 
 func (n *Node) syncOnce(reason string) {
+	if n.syncHook != nil {
+		n.syncHook(reason)
+	}
 	res, err := n.SyncOnce()
 	if err != nil {
 		log.Printf("sync (%s): %v", reason, err)
