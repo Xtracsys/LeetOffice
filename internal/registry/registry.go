@@ -51,6 +51,13 @@ type Entry struct {
 
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
+// Root is the directory Load/Import/RecordUse scan for skills/ and tools/.
+// It is the store worktree so a wizard store at ~/LeetOffice does not
+// scan ~/skills (outside git, not the team's registry).
+func Root(storeDir string) string {
+	return storeDir
+}
+
 // Load scans <root>/skills and <root>/tools for manifest.json entries.
 func Load(root string) ([]*Entry, error) {
 	var out []*Entry

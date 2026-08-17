@@ -183,6 +183,53 @@ func TestExportZip(t *testing.T) {
 	}
 }
 
+// TestRootIgnoresParentSkills is the wizard-layout gate: storeDir/.. is
+// ~ when the store is ~/LeetOffice. A decoy ~/skills must not appear.
+func TestRootIgnoresParentSkills(t *testing.T) {
+	home := t.TempDir()
+	storeDir := filepath.Join(home, "LeetOffice")
+	if err := os.MkdirAll(storeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeManifest(t, filepath.Join(home, "skills", "home-skill"),
+		Manifest{Name: "home-skill", Kind: "skill", Version: "1.0.0"})
+	writeManifest(t, filepath.Join(storeDir, "skills", "team-skill"),
+		Manifest{Name: "team-skill", Kind: "skill", Version: "1.0.0"})
+
+	if Root(storeDir) != storeDir {
+		t.Fatalf("Root = %q, want the store %q", Root(storeDir), storeDir)
+	}
+	entries, err := Load(Root(storeDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Manifest.Name != "team-skill" {
+		t.Fatalf("Load scanned outside the store: %+v", namesOf(entries))
+	}
+}
+
+func writeManifest(t *testing.T, dir string, m Manifest) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func namesOf(entries []*Entry) []string {
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Manifest.Name)
+	}
+	return out
+}
+
 func TestLoadSkipsNonRegistryFolders(t *testing.T) {
 	root, _ := fixtureRepo(t)
 	if err := os.MkdirAll(filepath.Join(root, "skills", "not-an-entry"), 0o755); err != nil {

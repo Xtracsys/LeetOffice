@@ -435,7 +435,7 @@ func cmdRegistry(args []string) error {
 	rest := fs.Args()
 	switch sub {
 	case "list":
-		entries, err := registry.Load(repoRoot(cfg))
+		entries, err := registry.Load(registry.Root(cfg.StoreDir))
 		if err != nil {
 			return err
 		}
@@ -453,7 +453,7 @@ func cmdRegistry(args []string) error {
 		if len(rest) < 1 {
 			return fmt.Errorf("import <src-dir> (a folder with manifest.json)")
 		}
-		e, err := registry.Import(repoRoot(cfg), rest[0], cfg.Actor, node.Repo)
+		e, err := registry.Import(registry.Root(cfg.StoreDir), rest[0], cfg.Actor, node.Repo)
 		if err != nil {
 			return err
 		}
@@ -470,7 +470,7 @@ func cmdRegistry(args []string) error {
 				success = false
 			}
 		}
-		e, err := registry.RecordUse(repoRoot(cfg), name, success, cfg.Actor, node.Repo)
+		e, err := registry.RecordUse(registry.Root(cfg.StoreDir), name, success, cfg.Actor, node.Repo)
 		if err != nil {
 			return err
 		}
@@ -479,12 +479,6 @@ func cmdRegistry(args []string) error {
 	default:
 		return fmt.Errorf("unknown registry subcommand %q", sub)
 	}
-}
-
-// repoRoot is where the registry folders live: alongside the store, matching
-// the repo layout (skills/, tools/ at the workspace root).
-func repoRoot(cfg *config.Config) string {
-	return filepath.Join(cfg.StoreDir, "..")
 }
 
 func cmdInstall(args []string) error {

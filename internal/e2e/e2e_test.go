@@ -166,7 +166,7 @@ func TestDefinitionOfDone(t *testing.T) {
 	}
 
 	// registry promotes after clean uses (import the bundled skill, threshold 3)
-	root := filepath.Dir(sAgent.Root)
+	root := registry.Root(sAgent.Root)
 	if _, err := registry.Import(root, "../../skills/hello-leetoffice", "human:josh", rAgent); err != nil {
 		t.Fatalf("import skill: %v", err)
 	}
