@@ -336,6 +336,9 @@ func (s *Server) toolSendMessage(args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if s.OnWrite != nil {
+		s.OnWrite()
+	}
 	return map[string]any{
 		"message_id": msg.ID, "channel": chat.Normalize(channel),
 		"at": msg.At, "commit_sha": sha,

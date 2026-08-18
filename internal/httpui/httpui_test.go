@@ -139,6 +139,8 @@ func TestAgentsPage(t *testing.T) {
 
 func TestChatShellAndAPI(t *testing.T) {
 	ui, st, _ := newUI(t)
+	var kicks int
+	ui.KickSync = func() { kicks++ }
 	h := httptest.NewServer(ui.Handler())
 	defer h.Close()
 
@@ -156,6 +158,9 @@ func TestChatShellAndAPI(t *testing.T) {
 		t.Fatalf("api send: %v %v", err, res)
 	}
 	res.Body.Close()
+	if kicks != 1 {
+		t.Fatalf("send should kick sync immediately, kicks=%d", kicks)
+	}
 
 	// state shows the channel, the message, and the sender's presence
 	state := get(t, h, "/api/state?channel=general")

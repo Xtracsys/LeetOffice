@@ -41,6 +41,9 @@ type Server struct {
 	actor   string
 	cfg     *config.Config
 	cfgPath string
+	// OnWrite is invoked after a successful send_message so the daemon
+	// can push immediately instead of waiting for the sync ticker.
+	OnWrite func()
 }
 
 // NewServer builds a Server. actor is e.g. "agent:hermes" or "human:josh".

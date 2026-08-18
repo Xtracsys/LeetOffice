@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -30,6 +31,9 @@ type Repo struct {
 	dir  string
 	repo *git.Repository
 	wt   *git.Worktree
+	// mu serializes go-git. Concurrent Sync / CommitAll / AuditLog
+	// (chat poll + timer + send) used to interleave and stall chat.
+	mu sync.Mutex
 }
 
 // DefaultBranch is the store branch.
@@ -107,6 +111,8 @@ func actorSignature(actor string) *object.Signature {
 // commit sha. ErrNoChanges if the tree is clean. Success leaves the
 // worktree clean — last_commit is not rewritten after the commit (D3).
 func (r *Repo) CommitAll(actor, msg string) (plumbing.Hash, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if _, err := r.wt.Add("."); err != nil {
 		return plumbing.ZeroHash, err
 	}
@@ -133,6 +139,8 @@ func (r *Repo) CommitAll(actor, msg string) (plumbing.Hash, error) {
 
 // AddRemote registers (or replaces) the main-share remote.
 func (r *Repo) AddRemote(name, url string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if err := r.repo.DeleteRemote(name); err != nil {
 		_ = err // may not exist
 	}
@@ -240,6 +248,8 @@ type SyncResult struct {
 }
 
 func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	res := &SyncResult{}
 	head, err := r.repo.Head()
 	if err != nil {
@@ -613,6 +623,8 @@ type AuditEntry struct {
 
 // AuditLog walks git history; optional filters by doc path, since, actor.
 func (r *Repo) AuditLog(docPath string, since time.Time, actor string, limit int) ([]AuditEntry, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	head, err := r.repo.Head()
 	if err != nil {
 		return nil, nil // unborn repo: no history yet, not an error
@@ -661,6 +673,8 @@ var storer_stop = errors.New("stop iteration")
 
 // HeadHash returns the current HEAD commit hash ("" when unborn).
 func (r *Repo) HeadHash() (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	ref, err := r.repo.Head()
 	if err != nil {
 		return "", nil // unborn repo — nothing synthesized yet
@@ -671,6 +685,12 @@ func (r *Repo) HeadHash() (string, error) {
 // FileAtCommit returns a file's blob bytes as of HEAD (back=0) or the Nth
 // ancestor commit (back=1 = HEAD's parent). Used by the MCP diff tool.
 func (r *Repo) FileAtCommit(path string, back int) ([]byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.fileAtCommit(path, back)
+}
+
+func (r *Repo) fileAtCommit(path string, back int) ([]byte, error) {
 	head, err := r.repo.Head()
 	if err != nil {
 		return nil, err
@@ -694,15 +714,17 @@ func (r *Repo) FileAtCommit(path string, back int) ([]byte, error) {
 // embedded doc.Version equals ver. ver == 0 means the file as of HEAD~1
 // (the parent commit). Used by the MCP diff tool.
 func (r *Repo) DocAtVersion(path string, ver int) (*store.Doc, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if ver == 0 {
-		raw, err := r.FileAtCommit(path, 1)
+		raw, err := r.fileAtCommit(path, 1)
 		if err != nil {
 			return nil, err
 		}
 		return store.ExtractDoc(raw)
 	}
 	for back := 0; back < 500; back++ {
-		raw, err := r.FileAtCommit(path, back)
+		raw, err := r.fileAtCommit(path, back)
 		if err != nil {
 			return nil, fmt.Errorf("sync: no revision of %s with version %d", path, ver)
 		}

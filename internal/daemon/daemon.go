@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"leetoffice/internal/config"
@@ -35,6 +36,7 @@ type Node struct {
 	enroll  *leetNet.EnrollmentServer // live coordinator secret; rotated from settings
 	// syncEveryCh tells syncLoop to Reset the ticker from Cfg.SyncEverySec.
 	syncEveryCh chan struct{}
+	syncRun     sync.Mutex          // one Sync at a time (ticker + KickSync)
 	syncHook    func(reason string) // tests: fires at the start of each syncOnce
 }
 
@@ -63,7 +65,9 @@ func Start(cfg *config.Config) (*Node, error) {
 	actor := cfg.Actor
 	mcpSrv := mcp.NewServer(s, repo, searchBackend(cfg, s), actor)
 	mcpSrv.BindConfig(cfg, "")
-	return &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv, syncEveryCh: make(chan struct{}, 1)}, nil
+	n := &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv, syncEveryCh: make(chan struct{}, 1)}
+	mcpSrv.OnWrite = n.KickSync
+	return n, nil
 }
 
 // StartAtPath opens the node described by a config file path.
@@ -116,6 +120,7 @@ func (n *Node) ServeHTTP() http.Handler {
 		ui.RotateEnrollment = n.enroll.SetSecret
 	}
 	ui.RescheduleSync = n.RescheduleSync
+	ui.KickSync = n.KickSync
 	mux.Handle("/", ui.Handler())
 	mux.Handle("/mcp", n.MCP.Handler())
 	mux.HandleFunc("/service/install", handleServiceInstall(n.Cfg))
@@ -147,6 +152,15 @@ func (n *Node) syncEvery() time.Duration {
 		sec = config.DefaultSyncEvery
 	}
 	return time.Duration(sec) * time.Second
+}
+
+// KickSync runs one sync cycle now (after a chat send) so other nodes
+// do not wait for the 5s ticker. Safe to call from HTTP/MCP goroutines.
+func (n *Node) KickSync() {
+	if n == nil || n.Cfg == nil || n.Cfg.MainShare == "" {
+		return
+	}
+	go n.syncOnce("write")
 }
 
 // RescheduleSync restarts the running sync ticker from Cfg.SyncEverySec
@@ -193,6 +207,8 @@ func (n *Node) SyncOnce() (*leetSync.SyncResult, error) {
 }
 
 func (n *Node) syncOnce(reason string) {
+	n.syncRun.Lock()
+	defer n.syncRun.Unlock()
 	if n.syncHook != nil {
 		n.syncHook(reason)
 	}

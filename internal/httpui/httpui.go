@@ -36,6 +36,8 @@ type UI struct {
 	// writes a new sync_every_sec. Nil when the UI is not wired to a live
 	// node (tests).
 	RescheduleSync func()
+	// KickSync pushes/pulls immediately after a chat send. Nil in tests.
+	KickSync func()
 	// Updater talks to GitHub Releases. Nil means update.Default()
 	// (production). Tests inject an httptest client. Never called except
 	// from POST /settings/update/{check,apply} (P1).

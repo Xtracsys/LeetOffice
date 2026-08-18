@@ -87,7 +87,37 @@ func (u *UI) handleAPIState(w http.ResponseWriter, r *http.Request) {
 		}{channelName, nil}
 	}
 
-	people := map[string]string{} // actor -> "online" | "recent"
+	// Chat polls this every 2.5s. Presence (mDNS + git audit) is cached so
+	// a wedged discovery lookup cannot freeze the message stream.
+	people := u.cachedPeople()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"me":       u.Config.Actor,
+		"channels": chanRows,
+		"current":  current,
+		"people":   people,
+	})
+}
+
+type peopleSnap struct {
+	mu     sync.Mutex
+	at     time.Time
+	people map[string]string
+}
+
+var peopleCache peopleSnap
+
+func (u *UI) cachedPeople() map[string]string {
+	peopleCache.mu.Lock()
+	if time.Since(peopleCache.at) < 8*time.Second && peopleCache.people != nil {
+		out := peopleCache.people
+		peopleCache.mu.Unlock()
+		return out
+	}
+	peopleCache.mu.Unlock()
+
+	people := map[string]string{}
 	for _, node := range onlineNodes() {
 		if u.Config.IsHidden(node) || u.Config.IsHidden("node:"+node) {
 			continue
@@ -103,16 +133,12 @@ func (u *UI) handleAPIState(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if _, ok := people[u.Config.Actor]; !ok {
-		people[u.Config.Actor] = "online" // you
+		people[u.Config.Actor] = "online"
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"me":       u.Config.Actor,
-		"channels": chanRows,
-		"current":  current,
-		"people":   people,
-	})
+	peopleCache.mu.Lock()
+	peopleCache.people, peopleCache.at = people, time.Now()
+	peopleCache.mu.Unlock()
+	return people
 }
 
 func (u *UI) handleAgentInbox(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +184,9 @@ func (u *UI) handleAPISend(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if u.KickSync != nil {
+		u.KickSync()
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(msg)
@@ -258,10 +287,14 @@ func (u *UI) handleChat(w http.ResponseWriter, r *http.Request) {
 <script>
 let current = localStorage.getItem('ch') || 'general';
 let lastID = '';
+let inflight = false;
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 function color(s){const p=['#3b4b8f','#7c5cbf','#2f855a','#b7791f','#c05621','#2b6cb0','#9b2c2c','#6b46c1'];let h=0;for(const c of s)h=(h*31+c.codePointAt(0))|0;return p[Math.abs(h)%p.length]}
 function avatar(a){return '<div class="ava" style="background:'+color(a)+'">'+esc((a.split(':')[1]||a)[0])+'</div>'}
 async function refresh(){
+  if (inflight) return;
+  inflight = true;
+  try {
   const q = current ? ('?channel='+encodeURIComponent(current)) : '';
   const st = await (await fetch('/api/state'+q)).json();
   const chEl = document.getElementById('chans');
@@ -293,6 +326,7 @@ async function refresh(){
     const last=(cur.messages||[])[cur.messages.length-1];
     if(last && last.id!==lastID){lastID=last.id; if(atBottom)stream.scrollTop=stream.scrollHeight}
   }
+  } finally { inflight = false; }
 }
 function pick(ch){current=ch;localStorage.setItem('ch',ch);lastID='';refresh()}
 document.getElementById('newch').onclick=()=>{
