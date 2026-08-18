@@ -150,7 +150,7 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 
 func (u *UI) writeTeamRoster(b *strings.Builder) {
 	b.WriteString(`<div class="card"><h3 style="margin-top:0">Team members</h3>`)
-	b.WriteString(`<p class="meta">There is no pending-join queue. Anyone with the current invite code is issued a certificate immediately. Already-enrolled nodes keep their certs if you regenerate the code.</p>`)
+	b.WriteString(`<p class="meta">A member is a node that enrolled with the invite code (a certificate). Names that only appear in History — leftover digest authors, old agent ids — are <b>recently active</b>, not members. Hide drops them from Chat and this page; git History is unchanged.</p>`)
 
 	b.WriteString(`<h3>Pending</h3>
 <p class="meta">None — joins are not held for approval.</p>`)
@@ -160,50 +160,113 @@ func (u *UI) writeTeamRoster(b *strings.Builder) {
 		online[id] = true
 	}
 	issued := leetNet.ListIssued(filepath.Join(u.Config.IdentityDir, leetNet.IssuedDir))
-	recent := chat.RecentActors(u.Repo, 24*time.Hour)
 
 	type row struct{ Name, Kind, Status string }
 	seen := map[string]bool{}
-	var rows []row
-	add := func(name, kind, status string) {
+	var members []row
+	add := func(dst *[]row, name, kind, status string) {
 		key := name + "|" + kind
 		if name == "" || seen[key] {
 			return
 		}
 		seen[key] = true
-		rows = append(rows, row{name, kind, status})
+		*dst = append(*dst, row{name, kind, status})
 	}
 	for _, m := range issued {
 		st := "accepted"
 		if online[m.NodeID] {
 			st = "online"
 		}
-		add(m.NodeID, "node", st)
+		add(&members, m.NodeID, "node", st)
 	}
-	for id := range online {
-		add(id, "node", "online")
-	}
-	for _, a := range recent {
-		st := "recent"
-		if strings.HasPrefix(a, "agent:") {
-			add(a, "agent", st)
-			continue
-		}
-		add(a, "actor", st)
-	}
-	add(u.Config.NodeID, "node", "this node")
-	add(u.Config.Actor, "actor", "you")
+	add(&members, u.Config.NodeID, "node", "this node")
+	add(&members, u.Config.Actor, "actor", "you")
 
 	b.WriteString(`<h3>Accepted</h3>
 <table><tr><th>who</th><th>kind</th><th>status</th></tr>`)
-	if len(rows) == 0 {
+	if len(members) == 0 {
 		b.WriteString(`<tr><td colspan="3" class="muted">No members yet — share the invite code.</td></tr>`)
 	}
-	for _, r := range rows {
+	for _, r := range members {
 		fmt.Fprintf(b, `<tr><td class="mono">%s</td><td class="mono">%s</td><td>%s</td></tr>`,
 			html.EscapeString(r.Name), html.EscapeString(r.Kind), html.EscapeString(r.Status))
 	}
-	b.WriteString(`</table></div>`)
+	b.WriteString(`</table>`)
+
+	memberNames := map[string]bool{}
+	for _, r := range members {
+		memberNames[r.Name] = true
+	}
+	var recent []row
+	for _, a := range chat.RecentActors(u.Repo, 24*time.Hour) {
+		if memberNames[a] || u.Config.IsHidden(a) {
+			continue
+		}
+		kind := "actor"
+		if strings.HasPrefix(a, "agent:") {
+			kind = "agent"
+		}
+		add(&recent, a, kind, "recent")
+	}
+	b.WriteString(`<h3>Recently active</h3>
+<p class="meta">Wrote something in the last day. Not enrolled unless they are also under Accepted.</p>`)
+	if len(recent) == 0 {
+		b.WriteString(`<p class="meta">None right now.</p>`)
+	} else {
+		b.WriteString(`<table><tr><th>who</th><th>kind</th><th></th></tr>`)
+		for _, r := range recent {
+			fmt.Fprintf(b, `<tr><td class="mono">%s</td><td class="mono">%s</td><td>
+<form method="post" action="/settings/hide" style="margin:0"><input type="hidden" name="actor" value="%s"><button class="ghost" type="submit">hide</button></form>
+</td></tr>`, html.EscapeString(r.Name), html.EscapeString(r.Kind), html.EscapeString(r.Name))
+		}
+		b.WriteString(`</table>`)
+	}
+
+	if hidden := u.Config.HiddenActors; len(hidden) > 0 {
+		b.WriteString(`<h3>Hidden</h3>
+<p class="meta">Hidden on this node only. Unhide puts them back in Chat if they are still recently active.</p>
+<table><tr><th>who</th><th></th></tr>`)
+		for _, name := range hidden {
+			fmt.Fprintf(b, `<tr><td class="mono">%s</td><td>
+<form method="post" action="/settings/unhide" style="margin:0"><input type="hidden" name="actor" value="%s"><button class="ghost" type="submit">unhide</button></form>
+</td></tr>`, html.EscapeString(name), html.EscapeString(name))
+		}
+		b.WriteString(`</table>`)
+	}
+	b.WriteString(`</div>`)
+}
+
+func (u *UI) handleHideActor(w http.ResponseWriter, r *http.Request) {
+	u.setHidden(w, r, true)
+}
+
+func (u *UI) handleUnhideActor(w http.ResponseWriter, r *http.Request) {
+	u.setHidden(w, r, false)
+}
+
+func (u *UI) setHidden(w http.ResponseWriter, r *http.Request, hide bool) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	_ = r.ParseForm()
+	name := strings.TrimSpace(r.FormValue("actor"))
+	if hide {
+		u.Config.HideActor(name)
+	} else {
+		u.Config.UnhideActor(name)
+	}
+	if u.CfgPath != "" {
+		if err := u.Config.Save(u.CfgPath); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
 func (u *UI) saveSettings(w http.ResponseWriter, r *http.Request) {

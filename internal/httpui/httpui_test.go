@@ -219,7 +219,7 @@ func TestSettingsPageAndInvite(t *testing.T) {
 		t.Fatalf("settings missing invite:\n%.400s", page)
 	}
 	if !strings.Contains(page, "Team members") || !strings.Contains(page, "Pending") ||
-		!strings.Contains(page, "Accepted") || !strings.Contains(page, "no pending-join queue") {
+		!strings.Contains(page, "Accepted") || !strings.Contains(page, "Recently active") {
 		t.Fatalf("settings missing team roster:\n%.400s", page)
 	}
 	if !strings.Contains(page, "Version") || !strings.Contains(page, "leetoffice") {
@@ -270,6 +270,66 @@ func TestSettingsPageAndInvite(t *testing.T) {
 	res3.Body.Close()
 	if resched != 1 {
 		t.Fatalf("RescheduleSync on unchanged cadence: %d", resched)
+	}
+}
+
+func TestHideRecentActor(t *testing.T) {
+	ui, s, repo := newUI(t)
+	ui.CfgPath = filepath.Join(t.TempDir(), "node.json")
+	d := store.NewDoc(store.TypeDoc, "spec", "Spec")
+	d.AddParagraph("from maya")
+	if err := s.Save(d, "human:maya"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CommitAll("human:maya", "maya write"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ui.Config.Save(ui.CfgPath); err != nil {
+		t.Fatal(err)
+	}
+	h := httptest.NewServer(ui.Handler())
+	defer h.Close()
+
+	page := get(t, h, "/settings")
+	if !strings.Contains(page, "Recently active") || !strings.Contains(page, "human:maya") {
+		t.Fatalf("maya should be recently active, not a member:\n%.700s", page)
+	}
+	if !strings.Contains(page, `/settings/hide`) {
+		t.Fatal("hide button missing")
+	}
+
+	res, err := h.Client().PostForm(h.URL+"/settings/hide", url.Values{"actor": {"human:maya"}})
+	if err != nil || res.StatusCode != 200 {
+		t.Fatalf("hide: %v %v", err, res)
+	}
+	res.Body.Close()
+	hidden := get(t, h, "/settings")
+	if !strings.Contains(hidden, "Hidden") || !strings.Contains(hidden, `/settings/unhide`) {
+		t.Fatalf("hidden list missing:\n%.600s", hidden)
+	}
+	state := get(t, h, "/api/state?channel=general")
+	if strings.Contains(state, "human:maya") {
+		t.Fatalf("hidden actor still in presence: %s", state)
+	}
+	// History still has the commit
+	audit := get(t, h, "/audit")
+	if !strings.Contains(audit, "maya write") {
+		t.Fatal("hide must not erase History")
+	}
+
+	res2, err := h.Client().PostForm(h.URL+"/settings/unhide", url.Values{"actor": {"human:maya"}})
+	if err != nil || res2.StatusCode != 200 {
+		t.Fatalf("unhide: %v %v", err, res2)
+	}
+	res2.Body.Close()
+	shown := get(t, h, "/settings")
+	if !strings.Contains(shown, "Recently active") || !strings.Contains(shown, `/settings/hide`) {
+		t.Fatalf("unhide did not restore recently active:\n%.600s", shown)
+	}
+
+	ui.Config.HideActor(ui.Config.Actor)
+	if ui.Config.IsHidden(ui.Config.Actor) {
+		t.Fatal("must not hide yourself")
 	}
 }
 

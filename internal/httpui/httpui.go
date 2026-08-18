@@ -64,6 +64,8 @@ func (u *UI) Handler() http.Handler {
 	mux.HandleFunc("/settings/invite", u.handleInviteRegen)
 	mux.HandleFunc("/settings/update/check", u.handleUpdateCheck)
 	mux.HandleFunc("/settings/update/apply", u.handleUpdateApply)
+	mux.HandleFunc("/settings/hide", u.handleHideActor)
+	mux.HandleFunc("/settings/unhide", u.handleUnhideActor)
 	return mux
 }
 

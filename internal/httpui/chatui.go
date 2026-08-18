@@ -88,9 +88,15 @@ func (u *UI) handleAPIState(w http.ResponseWriter, r *http.Request) {
 
 	people := map[string]string{} // actor -> "online" | "recent"
 	for _, node := range onlineNodes() {
+		if u.Config.IsHidden(node) || u.Config.IsHidden("node:"+node) {
+			continue
+		}
 		people["node:"+node] = "online"
 	}
 	for _, a := range chat.RecentActors(u.Repo, 24*time.Hour) {
+		if u.Config.IsHidden(a) {
+			continue
+		}
 		if _, ok := people[a]; !ok {
 			people[a] = "recent"
 		}
@@ -164,6 +170,8 @@ nav.bar a.on{color:var(--text);border-bottom-color:var(--red)}
 .rail .people{flex:1;overflow-y:auto;padding-bottom:16px}
 .rail .person{display:flex;align-items:center;gap:9px;padding:5px 20px;font-size:12.5px;color:rgba(248,245,235,.85)}
 .rail .person .you{color:rgba(248,245,235,.4);font-size:11px}
+.rail .person .hide{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:rgba(248,245,235,.35);text-decoration:none}
+.rail .person .hide:hover{color:var(--termtext)}
 .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .dot.online{background:var(--red);animation:xb-pulse 2s infinite}
 .dot.recent{background:rgba(248,245,235,.35)}
@@ -234,7 +242,12 @@ async function refresh(){
   chEl.querySelectorAll('a.ch').forEach(a=>a.onclick=e=>{e.preventDefault();pick(a.dataset.ch)});
   const pe = document.getElementById('people');
   pe.innerHTML = Object.entries(st.people||{}).sort((x,y)=> (y[1]==='online')-(x[1]==='online')).map(([p,s]) =>
-    '<div class="person"><span class="dot '+s+'"></span>'+esc(p)+(p===st.me?' <span style="color:#8a93ab">(you)</span>':'')+'</div>').join('');
+    '<div class="person"><span class="dot '+s+'"></span>'+esc(p)+(p===st.me?' <span class="you">(you)</span>':' <a class="hide" href="#" data-hide="'+esc(p)+'">hide</a>')+'</div>').join('');
+  pe.querySelectorAll('a.hide').forEach(a=>a.onclick=async e=>{
+    e.preventDefault();
+    await fetch('/settings/hide',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'actor='+encodeURIComponent(a.dataset.hide)});
+    refresh();
+  });
   document.getElementById('chname').textContent = current ? '#'+current : 'pick a channel';
   const mem=document.getElementById('members');
   if(mem){const n=(st.current&&st.current.messages)?st.current.messages.length:0;mem.textContent=n?n+' messages':''}

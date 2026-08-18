@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // Defaults for a fat-client node. The main share is configurable (D10).
@@ -41,9 +42,55 @@ type Config struct {
 
 	IdentityDir string `json:"identity_dir"` // certs/keys (mTLS)
 
+	// HiddenActors are names dropped from chat presence and the Settings
+	// "recently active" list. Git History is unchanged (D3). Local to this
+	// node — not team membership (that is the issued certificate).
+	HiddenActors []string `json:"hidden_actors,omitempty"`
+
 	// Path is where this config was loaded from (not serialized); it lets the
 	// service installer and MCP snippets reference the real file location.
 	Path string `json:"-"`
+}
+
+// IsHidden reports whether name is on the local hide list.
+func (c *Config) IsHidden(name string) bool {
+	if c == nil {
+		return false
+	}
+	name = strings.TrimSpace(name)
+	for _, h := range c.HiddenActors {
+		if h == name {
+			return true
+		}
+	}
+	return false
+}
+
+// HideActor adds name to the local hide list. You cannot hide yourself.
+func (c *Config) HideActor(name string) {
+	if c == nil {
+		return
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || name == c.Actor || name == c.NodeID || c.IsHidden(name) {
+		return
+	}
+	c.HiddenActors = append(c.HiddenActors, name)
+}
+
+// UnhideActor removes name from the hide list.
+func (c *Config) UnhideActor(name string) {
+	if c == nil || len(c.HiddenActors) == 0 {
+		return
+	}
+	name = strings.TrimSpace(name)
+	out := c.HiddenActors[:0]
+	for _, h := range c.HiddenActors {
+		if h != name {
+			out = append(out, h)
+		}
+	}
+	c.HiddenActors = out
 }
 
 // DefaultPath is the per-user config location.
