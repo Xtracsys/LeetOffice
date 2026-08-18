@@ -5,15 +5,22 @@
 package httpui
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"leetoffice/internal/buildinfo"
+	"leetoffice/internal/chat"
+	leetNet "leetoffice/internal/net"
 	"leetoffice/internal/store"
+	"leetoffice/internal/update"
 )
 
 // handleAudit renders git history — the audit trail every change lands in
@@ -88,6 +95,7 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 
 	// identity + node facts
 	b.WriteString(`<div class="card surface"><h3 style="margin-top:0">This node</h3><dl class="dl">`)
+	fmt.Fprintf(&b, `<dt>Version</dt><dd class="mono">%s</dd>`, html.EscapeString(buildinfo.Full()))
 	fmt.Fprintf(&b, `<dt>Node</dt><dd class="mono">%s</dd>`, html.EscapeString(u.Config.NodeID))
 	fmt.Fprintf(&b, `<dt>Role</dt><dd class="mono">%s</dd>`, html.EscapeString(u.Config.Role))
 	fmt.Fprintf(&b, `<dt>Store</dt><dd class="mono">%s</dd>`, html.EscapeString(u.Config.StoreDir))
@@ -98,6 +106,8 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(&b, `<dt>Config</dt><dd class="mono">%s</dd>`, html.EscapeString(u.CfgPath))
 	}
 	b.WriteString(`</dl></div>`)
+
+	u.writeUpdateCard(&b)
 
 	// team invite (coordinator)
 	if u.Config.IsCoordinator() {
@@ -110,6 +120,8 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 <span class="meta">invalidates the old code — already-enrolled nodes are unaffected (their certificates still work)</span></form>`)
 		b.WriteString(`</div>`)
 	}
+
+	u.writeTeamRoster(&b)
 
 	// editable identity + cadence
 	b.WriteString(`<div class="card"><h3 style="margin-top:0">Identity &amp; sync</h3>
@@ -134,6 +146,64 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 </div></div>`)
 
 	_, _ = w.Write([]byte(xbPageActor("Settings", "settings", b.String(), u.Config.Actor)))
+}
+
+func (u *UI) writeTeamRoster(b *strings.Builder) {
+	b.WriteString(`<div class="card"><h3 style="margin-top:0">Team members</h3>`)
+	b.WriteString(`<p class="meta">There is no pending-join queue. Anyone with the current invite code is issued a certificate immediately. Already-enrolled nodes keep their certs if you regenerate the code.</p>`)
+
+	b.WriteString(`<h3>Pending</h3>
+<p class="meta">None — joins are not held for approval.</p>`)
+
+	online := map[string]bool{}
+	for _, id := range onlineNodes() {
+		online[id] = true
+	}
+	issued := leetNet.ListIssued(filepath.Join(u.Config.IdentityDir, leetNet.IssuedDir))
+	recent := chat.RecentActors(u.Repo, 24*time.Hour)
+
+	type row struct{ Name, Kind, Status string }
+	seen := map[string]bool{}
+	var rows []row
+	add := func(name, kind, status string) {
+		key := name + "|" + kind
+		if name == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		rows = append(rows, row{name, kind, status})
+	}
+	for _, m := range issued {
+		st := "accepted"
+		if online[m.NodeID] {
+			st = "online"
+		}
+		add(m.NodeID, "node", st)
+	}
+	for id := range online {
+		add(id, "node", "online")
+	}
+	for _, a := range recent {
+		st := "recent"
+		if strings.HasPrefix(a, "agent:") {
+			add(a, "agent", st)
+			continue
+		}
+		add(a, "actor", st)
+	}
+	add(u.Config.NodeID, "node", "this node")
+	add(u.Config.Actor, "actor", "you")
+
+	b.WriteString(`<h3>Accepted</h3>
+<table><tr><th>who</th><th>kind</th><th>status</th></tr>`)
+	if len(rows) == 0 {
+		b.WriteString(`<tr><td colspan="3" class="muted">No members yet — share the invite code.</td></tr>`)
+	}
+	for _, r := range rows {
+		fmt.Fprintf(b, `<tr><td class="mono">%s</td><td class="mono">%s</td><td>%s</td></tr>`,
+			html.EscapeString(r.Name), html.EscapeString(r.Kind), html.EscapeString(r.Status))
+	}
+	b.WriteString(`</table></div>`)
 }
 
 func (u *UI) saveSettings(w http.ResponseWriter, r *http.Request) {
@@ -193,4 +263,130 @@ func (u *UI) handleInviteRegen(w http.ResponseWriter, r *http.Request) {
 		u.RotateEnrollment(u.Config.EnrollmentSecret)
 	}
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+}
+
+func (u *UI) writeUpdateCard(b *strings.Builder) {
+	b.WriteString(`<div class="card" id="update"><h3 style="margin-top:0">Updates</h3>
+<p class="meta">GitHub is contacted only when you click <b>check for update</b> or <b>install</b>. The daemon never phones home on its own.</p>`)
+
+	u.updateMu.Lock()
+	last := u.lastCheck
+	applied := u.lastApply
+	err := u.updateErr
+	u.updateMu.Unlock()
+
+	if err != nil {
+		fmt.Fprintf(b, `<p class="meta red">%s</p>`, html.EscapeString(err.Error()))
+	}
+	if applied != nil {
+		fmt.Fprintf(b, `<p class="meta">Installed <span class="mono">%s</span> at <span class="mono">%s</span>. Restart LeetOffice to run it (if always-on: undo then make always-on, or reboot).</p>`,
+			html.EscapeString(applied.Version), html.EscapeString(applied.Path))
+	}
+	if last != nil && applied == nil {
+		if last.Newer {
+			fmt.Fprintf(b, `<p class="meta"><span class="mono">%s</span> is available (this build is <span class="mono">%s</span>). Install verifies the SHA-256 checksum, then replaces this binary.</p>`,
+				html.EscapeString(last.Latest), html.EscapeString(last.Current))
+		} else {
+			fmt.Fprintf(b, `<p class="meta">You're on the latest release (<span class="mono">%s</span>).</p>`,
+				html.EscapeString(last.Latest))
+		}
+	}
+
+	b.WriteString(`<div class="row">
+<form method="post" action="/settings/update/check"><button class="ghost">check for update</button></form>`)
+	if last != nil && last.Newer && applied == nil {
+		b.WriteString(`<form method="post" action="/settings/update/apply"><button>install `)
+		b.WriteString(html.EscapeString(last.Latest))
+		b.WriteString(`</button></form>`)
+	}
+	b.WriteString(`</div></div>`)
+}
+
+func (u *UI) updater() *update.Client {
+	if u.Updater != nil {
+		return u.Updater
+	}
+	return update.Default()
+}
+
+func (u *UI) updateDest() string {
+	if u.BinaryPath != "" {
+		return u.BinaryPath
+	}
+	p, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return p
+}
+
+func (u *UI) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	res, err := u.updater().Check(ctx, buildinfo.Version)
+	u.updateMu.Lock()
+	u.lastApply = nil
+	if err != nil {
+		u.updateErr = err
+		u.lastCheck = nil
+	} else {
+		u.updateErr = nil
+		u.lastCheck = res
+	}
+	u.updateMu.Unlock()
+	http.Redirect(w, r, "/settings#update", http.StatusSeeOther)
+}
+
+func (u *UI) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	c := u.updater()
+	u.updateMu.Lock()
+	var rel *update.Release
+	if u.lastCheck != nil {
+		rel = u.lastCheck.Release
+	}
+	u.updateMu.Unlock()
+
+	check, err := c.Check(ctx, buildinfo.Version)
+	if err != nil {
+		u.updateMu.Lock()
+		u.updateErr = err
+		u.lastApply = nil
+		u.updateMu.Unlock()
+		http.Redirect(w, r, "/settings#update", http.StatusSeeOther)
+		return
+	}
+	if !check.Newer {
+		u.updateMu.Lock()
+		u.updateErr = nil
+		u.lastCheck = check
+		u.lastApply = nil
+		u.updateMu.Unlock()
+		http.Redirect(w, r, "/settings#update", http.StatusSeeOther)
+		return
+	}
+	if rel == nil || rel.Tag != check.Latest {
+		rel = check.Release
+	}
+	applied, err := c.Apply(ctx, u.updateDest(), rel)
+	u.updateMu.Lock()
+	u.lastCheck = check
+	if err != nil {
+		u.updateErr = err
+		u.lastApply = nil
+	} else {
+		u.updateErr = nil
+		u.lastApply = applied
+	}
+	u.updateMu.Unlock()
+	http.Redirect(w, r, "/settings#update", http.StatusSeeOther)
 }

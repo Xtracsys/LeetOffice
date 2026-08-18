@@ -4,7 +4,11 @@
 // hairline borders, and a dark terminal card as the signature element.
 package httpui
 
-import "html"
+import (
+	"html"
+
+	"leetoffice/internal/buildinfo"
+)
 
 const xbCSS = `
 :root{
@@ -87,9 +91,12 @@ func xbNav(active, actor string) string {
 		out += `<a href="` + item.path + `"` + cls + `>` + item.label + `</a>`
 	}
 	out += `</nav>`
+	out += `<span class="navside">`
+	out += html.EscapeString(buildinfo.Short())
 	if actor != "" {
-		out += `<span class="navside">` + html.EscapeString(actor) + `</span>`
+		out += ` · ` + html.EscapeString(actor)
 	}
+	out += `</span>`
 	out += `</div></header>`
 	return out
 }

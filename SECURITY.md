@@ -16,6 +16,11 @@ We aim to respond within 72 hours.
 - Audit: every change is an attributed, timestamped git commit.
 - **100% local by design** — the daemon makes no outbound connections except
   to nodes you enrolled with and (optionally) a local Ollama.
+  The one documented exception is a **user-initiated update**: Settings →
+  **check for update** / **install**, or `leetd update [--apply]`. Those
+  clicks talk to GitHub Releases, verify the SHA-256 in `checksums-*.txt`,
+  and (on install) replace this binary. There is no startup ping, no
+  timer, and no background check.
 
 ## Scope
 

@@ -24,7 +24,7 @@ for target in \
   out="dist/leetd-${VERSION}-${os}-${arch}${ext}"
   echo "building $out"
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
-    -ldflags "-s -w -X main.version=${RELEASE:-dev} -X main.commit=${VERSION%-dirty}" \
+    -ldflags "-s -w -X leetoffice/internal/buildinfo.Version=${RELEASE:-dev} -X leetoffice/internal/buildinfo.Commit=${VERSION%-dirty} -X main.version=${RELEASE:-dev} -X main.commit=${VERSION%-dirty}" \
     -o "$out" ./cmd/leetd
   # electron-builder extraResources uses ${os}/${arch} = mac/x64, not darwin/amd64
   eb_os="$os"

@@ -1,10 +1,16 @@
 package httpui
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +18,7 @@ import (
 	"leetoffice/internal/config"
 	"leetoffice/internal/store"
 	leetSync "leetoffice/internal/sync"
+	"leetoffice/internal/update"
 )
 
 func newUI(t *testing.T) (*UI, *store.Store, *leetSync.Repo) {
@@ -211,6 +218,16 @@ func TestSettingsPageAndInvite(t *testing.T) {
 	if !strings.Contains(page, "firstcode123") || !strings.Contains(page, "Team invite") {
 		t.Fatalf("settings missing invite:\n%.400s", page)
 	}
+	if !strings.Contains(page, "Team members") || !strings.Contains(page, "Pending") ||
+		!strings.Contains(page, "Accepted") || !strings.Contains(page, "no pending-join queue") {
+		t.Fatalf("settings missing team roster:\n%.400s", page)
+	}
+	if !strings.Contains(page, "Version") || !strings.Contains(page, "leetoffice") {
+		t.Fatalf("settings missing version:\n%.400s", page)
+	}
+	if !strings.Contains(page, "Updates") || !strings.Contains(page, "never phones home") {
+		t.Fatalf("settings missing update card:\n%.400s", page)
+	}
 	res, err := h.Client().PostForm(h.URL+"/settings/invite", nil)
 	if err != nil || res.StatusCode != 200 {
 		t.Fatalf("regen: %v %v", err, res)
@@ -253,5 +270,83 @@ func TestSettingsPageAndInvite(t *testing.T) {
 	res3.Body.Close()
 	if resched != 1 {
 		t.Fatalf("RescheduleSync on unchanged cadence: %d", resched)
+	}
+}
+
+func TestSettingsUpdateCheckAndApply(t *testing.T) {
+	payload := []byte("leetd-from-settings-update")
+	sum := sha256.Sum256(payload)
+	hexSum := hex.EncodeToString(sum[:])
+	tag := "v9.9.9"
+	binName := update.AssetName(tag, runtime.GOOS, runtime.GOARCH)
+	sumName := update.ChecksumName(tag)
+
+	var hits []string
+	var srv *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		hits = append(hits, r.URL.Path)
+		switch r.URL.Path {
+		case "/repos/Xtracsys/LeetOffice/releases/latest":
+			fmt.Fprintf(w, `{"tag_name":%q,"html_url":"https://example.invalid/%s","assets":[
+				{"name":%q,"browser_download_url":%q,"digest":"sha256:%s"},
+				{"name":%q,"browser_download_url":%q}]}`,
+				tag, tag, binName, srv.URL+"/dl/"+binName, hexSum, sumName, srv.URL+"/dl/"+sumName)
+		case "/dl/" + binName:
+			_, _ = w.Write(payload)
+		case "/dl/" + sumName:
+			fmt.Fprintf(w, "%s  %s\n", hexSum, binName)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	srv = httptest.NewServer(mux)
+	defer srv.Close()
+
+	dest := filepath.Join(t.TempDir(), "leetd")
+	if err := os.WriteFile(dest, []byte("old-bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ui, _, _ := newUI(t)
+	ui.BinaryPath = dest
+	ui.Updater = &update.Client{API: srv.URL, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}
+	h := httptest.NewServer(ui.Handler())
+	defer h.Close()
+
+	// GET /settings must not contact GitHub (P1).
+	page := get(t, h, "/settings")
+	if !strings.Contains(page, "Updates") || !strings.Contains(page, "never phones home") {
+		t.Fatalf("settings missing update card:\n%.500s", page)
+	}
+	if !strings.Contains(page, "/settings/update/check") {
+		t.Fatal("check button missing")
+	}
+	if len(hits) != 0 {
+		t.Fatalf("GET /settings contacted GitHub: %v", hits)
+	}
+
+	res, err := h.Client().PostForm(h.URL+"/settings/update/check", nil)
+	if err != nil || res.StatusCode != 200 {
+		t.Fatalf("check: %v %v", err, res)
+	}
+	res.Body.Close()
+	checked := get(t, h, "/settings")
+	if !strings.Contains(checked, "v9.9.9") || !strings.Contains(checked, "/settings/update/apply") {
+		t.Fatalf("after check, missing install:\n%.600s", checked)
+	}
+
+	res2, err := h.Client().PostForm(h.URL+"/settings/update/apply", nil)
+	if err != nil || res2.StatusCode != 200 {
+		t.Fatalf("apply: %v %v", err, res2)
+	}
+	res2.Body.Close()
+	got, err := os.ReadFile(dest)
+	if err != nil || string(got) != string(payload) {
+		t.Fatalf("binary not replaced: %q %v", got, err)
+	}
+	applied := get(t, h, "/settings")
+	if !strings.Contains(applied, "Installed") || !strings.Contains(applied, "v9.9.9") {
+		t.Fatalf("after apply:\n%.600s", applied)
 	}
 }

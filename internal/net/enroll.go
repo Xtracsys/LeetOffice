@@ -43,11 +43,12 @@ type EnrollResult struct {
 // exchanges CA-signed node certificates for the one-time team enrollment
 // secret. A wrong secret gets 403 and no certificate.
 type EnrollmentServer struct {
-	srv     *http.Server
-	ln      net.Listener
-	gitPort int    // advertised in responses so joiners sync to the right service
-	gitPath string // advertised repo path so joiners request the real share name
-	secret  atomic.Pointer[string]
+	srv        *http.Server
+	ln         net.Listener
+	gitPort    int    // advertised in responses so joiners sync to the right service
+	gitPath    string // advertised repo path so joiners request the real share name
+	membersDir string // issued certs for the Settings roster
+	secret     atomic.Pointer[string]
 }
 
 // NewEnrollmentServer starts listening for enrollment requests on addr
@@ -90,6 +91,10 @@ func (s *EnrollmentServer) currentSecret() string {
 	return ""
 }
 
+// SetMembersDir is where successful enrollments write node certificates
+// so the coordinator UI can list accepted members.
+func (s *EnrollmentServer) SetMembersDir(dir string) { s.membersDir = dir }
+
 func (s *EnrollmentServer) enrollHandler(ca *CA) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/enroll", func(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +119,11 @@ func (s *EnrollmentServer) enrollHandler(ca *CA) http.Handler {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if s.membersDir != "" {
+			if nodeID := issuedNodeID(certPEM); nodeID != "" {
+				_ = RecordIssued(s.membersDir, nodeID, certPEM)
+			}
+		}
 		// Tell the joiner where git sync actually lives. The host is taken
 		// from the request — whatever name the joiner dialed is by
 		// construction reachable from their machine.
@@ -134,6 +144,24 @@ func (s *EnrollmentServer) enrollHandler(ca *CA) http.Handler {
 		})
 	})
 	return mux
+}
+
+func issuedNodeID(certPEM []byte) string {
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return ""
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return ""
+	}
+	if cert.Subject.CommonName != "" {
+		return cert.Subject.CommonName
+	}
+	if len(cert.DNSNames) > 0 {
+		return cert.DNSNames[0]
+	}
+	return ""
 }
 
 // Enroll joins a team (§6.3): generate a keypair, send its CSR plus the

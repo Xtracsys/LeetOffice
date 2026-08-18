@@ -11,10 +11,12 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 
 	"leetoffice/internal/config"
 	"leetoffice/internal/store"
 	leetSync "leetoffice/internal/sync"
+	"leetoffice/internal/update"
 )
 
 // UI serves the editor. Writes are attributed to the node's human actor.
@@ -34,6 +36,15 @@ type UI struct {
 	// writes a new sync_every_sec. Nil when the UI is not wired to a live
 	// node (tests).
 	RescheduleSync func()
+	// Updater talks to GitHub Releases. Nil means update.Default()
+	// (production). Tests inject an httptest client. Never called except
+	// from POST /settings/update/{check,apply} (P1).
+	Updater *update.Client
+
+	updateMu  sync.Mutex
+	lastCheck *update.CheckResult
+	lastApply *update.ApplyResult
+	updateErr error
 }
 
 // Handler builds the HTTP routes.
@@ -51,6 +62,8 @@ func (u *UI) Handler() http.Handler {
 	mux.HandleFunc("/audit", u.handleAudit)
 	mux.HandleFunc("/settings", u.handleSettings)
 	mux.HandleFunc("/settings/invite", u.handleInviteRegen)
+	mux.HandleFunc("/settings/update/check", u.handleUpdateCheck)
+	mux.HandleFunc("/settings/update/apply", u.handleUpdateApply)
 	return mux
 }
 

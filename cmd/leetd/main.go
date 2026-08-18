@@ -12,16 +12,17 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
+	"leetoffice/internal/buildinfo"
 	"leetoffice/internal/config"
 	"leetoffice/internal/daemon"
 	"leetoffice/internal/memory"
 	leetNet "leetoffice/internal/net"
 	"leetoffice/internal/registry"
 	"leetoffice/internal/store"
+	"leetoffice/internal/update"
 )
 
 func main() {
@@ -74,6 +75,8 @@ func main() {
 		err = cmdMCPInstall(os.Args[2:])
 	case "version":
 		cmdVersion()
+	case "update":
+		err = cmdUpdate(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -103,6 +106,7 @@ usage:
   leetd uninstall                                                       remove the login service
   leetd mcp-install [--client claude] [--write]                         print/write MCP client config
   leetd version                                                        build + platform info
+  leetd update [--apply]                                               check GitHub (or install) a newer release
   leetd check                                                          store self-test
 
   running leetd with no arguments starts the node (first run opens the setup wizard).
@@ -542,13 +546,61 @@ func cmdMCPInstall(args []string) error {
 	}
 }
 
-// Build info, injected at release time (-ldflags "-X main.version=…").
+// Build info, injected at release time. Prefer buildinfo (UI + CLI share
+// it); keep main.version/commit so older -X main.version=… still works.
 var (
 	version = "dev"
 	commit  = "none"
 )
 
 func cmdVersion() {
-	fmt.Printf("leetoffice %s (%s) %s/%s\n", version, commit, runtime.GOOS, runtime.GOARCH)
+	syncBuildinfo()
+	fmt.Println(buildinfo.Full())
 	fmt.Println("https://github.com/Xtracsys/LeetOffice · Apache-2.0 · 100% local, no egress")
+}
+
+func syncBuildinfo() {
+	if buildinfo.Version == "dev" && version != "dev" {
+		buildinfo.Version, buildinfo.Commit = version, commit
+	}
+}
+
+// cmdUpdate is the CLI twin of Settings → check / install. GitHub is
+// contacted only because the operator ran this command (P1).
+func cmdUpdate(args []string) error {
+	syncBuildinfo()
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	apply := fs.Bool("apply", false, "download, verify SHA-256, and replace this binary")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	c := update.Default()
+	res, err := c.Check(ctx, buildinfo.Version)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("this build:  %s\nlatest:      %s\n", res.Current, res.Latest)
+	if res.Release != nil && res.Release.HTMLURL != "" {
+		fmt.Println("release:    ", res.Release.HTMLURL)
+	}
+	if !res.Newer {
+		fmt.Println("already on the latest release")
+		return nil
+	}
+	if !*apply {
+		fmt.Println("update available — re-run with --apply to install (checksum-verified)")
+		return nil
+	}
+	dest, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	applied, err := c.Apply(ctx, dest, res.Release)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("installed %s → %s (%d bytes)\nrestart leetd to run it\n", applied.Version, applied.Path, applied.Bytes)
+	return nil
 }

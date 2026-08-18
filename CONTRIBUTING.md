@@ -6,7 +6,9 @@ Thanks for helping build a workspace that stays on your machines.
 
 - **100% local, no egress (P1).** A PR that phones home — analytics, remote
   fonts, update pings — will be declined. Exceptions must be explicitly
-  user-enabled and documented.
+  user-enabled and documented. The in-app updater (`internal/update`,
+  Settings → check/install, `leetd update`) is that exception: GitHub
+  Releases only, and only on an explicit click.
 - **The store format is a contract (D1).** Tabbed HTML + embedded canonical
   JSON + Markdown index. Changes to the schema need a BUILD_SPEC update.
 - **Never silently overwrite (D6).** Concurrent edits keep both versions.

@@ -43,6 +43,7 @@ leetd        # that's the whole install-and-run
    already alive with a welcome doc and starter channels
 3. **Docs / Memory / History / Agents / Settings** sit in a persistent menubar —
    History is the full git audit trail; Settings holds your team invite code
+   and a **check for update** button (GitHub is contacted only when you click)
 4. Click **make always-on** and it survives reboots. Done.
 
 Agents join through MCP (`leetd mcp-install` prints the config; the Agents
@@ -109,7 +110,7 @@ Memory synthesis, daily digests, hygiene checks, and memory-boosted search
 
 ```sh
 leetd check          # store self-test
-go test ./...        # full suite (13 packages, race-clean)
+go test ./...        # full suite (14 packages, race-clean)
 ```
 
 ## What it isn't (yet)
@@ -125,7 +126,8 @@ All documented, all on the roadmap, none of them silent.
 `internal/store` schema · `internal/sync` git+audit+merge · `internal/net`
 mTLS/mDNS/transport · `internal/mcp` agent surface · `internal/chat` team
 chat · `internal/memory`+`rag` automations/search · `internal/httpui` GUI ·
-`internal/daemon` composition · `cmd/leetd` CLI.
+`internal/update` user-initiated GitHub updater · `internal/daemon`
+composition · `cmd/leetd` CLI.
 
 Spec-first project: [REQUIREMENTS.md](REQUIREMENTS.md) (the what/why, 19
 decisions) → [BUILD_SPEC.md](BUILD_SPEC.md) (the contracts) →

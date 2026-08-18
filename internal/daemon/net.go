@@ -69,6 +69,11 @@ func (n *Node) serveCoordinator(ctx context.Context) error {
 		log.Printf("net: enrollment on %s — nodes run `leetd enroll --coordinator %s --secret <secret>`",
 			enr.Addr(), enrollAddr(enr.Addr(), n.Cfg))
 		enrollPort = portOf(enr.Addr())
+		issued := filepath.Join(idDir, leetNet.IssuedDir)
+		enr.SetMembersDir(issued)
+		if pem, err := os.ReadFile(filepath.Join(idDir, "node.crt")); err == nil {
+			_ = leetNet.RecordIssued(issued, n.Cfg.NodeID, pem)
+		}
 		n.enroll = enr
 		go func() {
 			<-ctx.Done()
