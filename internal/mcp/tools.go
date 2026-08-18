@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"leetoffice/internal/chat"
+	"leetoffice/internal/config"
 	"leetoffice/internal/store"
 	leetSync "leetoffice/internal/sync"
 )
@@ -338,5 +339,108 @@ func (s *Server) toolSendMessage(args map[string]any) (any, error) {
 	return map[string]any{
 		"message_id": msg.ID, "channel": chat.Normalize(channel),
 		"at": msg.At, "commit_sha": sha,
+		"mentioned": chat.MentionedAgents(text),
 	}, nil
+}
+
+// sessionActor is the MCP --actor. A request may name the same actor
+// (or a bare id); it may not read another agent's inbox.
+func (s *Server) sessionActor(args map[string]any) (string, error) {
+	want := config.CanonicalActor(s.actor)
+	got := strings.TrimSpace(argStr(args, "actor"))
+	if got == "" {
+		return want, nil
+	}
+	got = config.CanonicalActor(got)
+	if !config.SameActor(got, want) {
+		return "", fmt.Errorf("actor %q does not match this MCP session (%s)", got, want)
+	}
+	return want, nil
+}
+
+func (s *Server) persistCfg() error {
+	if s.cfg == nil {
+		return fmt.Errorf("subscribe/inbox need a node config")
+	}
+	if s.cfgPath == "" {
+		return nil
+	}
+	return s.cfg.Save(s.cfgPath)
+}
+
+func argStrings(args map[string]any, key string) []string {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch v := raw.(type) {
+	case []string:
+		return v
+	case []any:
+		var out []string
+		for _, item := range v {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func (s *Server) toolSubscribe(args map[string]any) (any, error) {
+	actor, err := s.sessionActor(args)
+	if err != nil {
+		return nil, err
+	}
+	if s.cfg == nil {
+		return nil, fmt.Errorf("subscribe needs a node config")
+	}
+	sub := s.cfg.Subscribe(actor, argStrings(args, "channels"))
+	if err := s.persistCfg(); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "channels": sub.Channels}, nil
+}
+
+func (s *Server) toolInbox(args map[string]any) (any, error) {
+	actor, err := s.sessionActor(args)
+	if err != nil {
+		return nil, err
+	}
+	if s.cfg == nil {
+		return nil, fmt.Errorf("inbox needs a node config")
+	}
+	sub, ok := s.cfg.Subscription(actor)
+	if !ok {
+		return nil, fmt.Errorf("subscribe first")
+	}
+	items, err := chat.CollectInbox(s.store, sub, argStr(args, "channel"), argStr(args, "since_ts"), argInt(args, "limit", 50))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"items": items, "count": len(items)}, nil
+}
+
+func (s *Server) toolMarkRead(args map[string]any) (any, error) {
+	actor, err := s.sessionActor(args)
+	if err != nil {
+		return nil, err
+	}
+	if s.cfg == nil {
+		return nil, fmt.Errorf("mark_read needs a node config")
+	}
+	ch := argStr(args, "channel")
+	ts := argStr(args, "ts")
+	if ch == "" || ts == "" {
+		return nil, fmt.Errorf("channel and ts are required")
+	}
+	if !s.cfg.MarkRead(actor, chat.Normalize(ch), ts) {
+		return nil, fmt.Errorf("subscribe first")
+	}
+	if err := s.persistCfg(); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "channel": chat.Normalize(ch), "ts": ts}, nil
 }

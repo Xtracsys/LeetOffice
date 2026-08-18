@@ -62,8 +62,10 @@ page has a copy button):
     "command": "leetd", "args": ["mcp", "--actor", "agent:hermes"] } } }
 ```
 
-Now `send_message`, `create_task`, `read_doc`, `search`, … — nine tools, every
-write attributed to the agent, merge-safe against human edits.
+Now `send_message`, `create_task`, `read_doc`, `search`, … — twelve tools, every
+write attributed to the agent, merge-safe against human edits. Agents
+`subscribe` to channels and poll `inbox` for `@agent:<id>` mentions (human-only
+traffic stays quiet). `mark_read` keeps the cursor in `node.json`.
 
 ## Install
 

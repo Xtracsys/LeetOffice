@@ -222,6 +222,7 @@ func cmdMCP(args []string) error {
 	if err != nil {
 		return err
 	}
+	node.MCP.BindConfig(cfg, *cfgPath)
 	return node.MCP.ServeStdio(os.Stdin, os.Stdout)
 }
 

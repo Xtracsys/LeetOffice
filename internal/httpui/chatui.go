@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"html"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -112,6 +113,35 @@ func (u *UI) handleAPIState(w http.ResponseWriter, r *http.Request) {
 		"current":  current,
 		"people":   people,
 	})
+}
+
+func (u *UI) handleAgentInbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
+	if actor == "" {
+		http.Error(w, "actor required", http.StatusBadRequest)
+		return
+	}
+	sub, ok := u.Config.Subscription(actor)
+	if !ok {
+		http.Error(w, "subscribe first", http.StatusBadRequest)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	since := r.URL.Query().Get("since")
+	if since == "" {
+		since = r.URL.Query().Get("since_ts")
+	}
+	items, err := chat.CollectInbox(u.Store, sub, r.URL.Query().Get("channel"), since, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "count": len(items)})
 }
 
 func (u *UI) handleAPISend(w http.ResponseWriter, r *http.Request) {

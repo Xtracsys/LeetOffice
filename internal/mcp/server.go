@@ -1,5 +1,5 @@
 // Package mcp implements the LeetOffice MCP server (M10/M11, BUILD_SPEC §5):
-// the 9-tool agent surface spoken as JSON-RPC 2.0 over stdio and HTTP, per the
+// the MCP agent surface spoken as JSON-RPC 2.0 over stdio and HTTP, per the
 // Model Context Protocol. Every write is attributed to the actor injected at
 // server construction (D7 — agents never self-report identity) and lands in
 // the git audit trail.
@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 
+	"leetoffice/internal/config"
 	"leetoffice/internal/store"
 	leetSync "leetoffice/internal/sync"
 )
@@ -34,15 +35,26 @@ type SearchFunc func(query string, typ string, tags []string, limit int) ([]Hit,
 
 // Server is an MCP server bound to one store, repo, and actor.
 type Server struct {
-	store  *store.Store
-	repo   *leetSync.Repo
-	search SearchFunc
-	actor  string
+	store   *store.Store
+	repo    *leetSync.Repo
+	search  SearchFunc
+	actor   string
+	cfg     *config.Config
+	cfgPath string
 }
 
 // NewServer builds a Server. actor is e.g. "agent:hermes" or "human:josh".
 func NewServer(s *store.Store, repo *leetSync.Repo, search SearchFunc, actor string) *Server {
 	return &Server{store: s, repo: repo, search: search, actor: actor}
+}
+
+// BindConfig attaches node.json so subscribe / mark_read persist.
+func (s *Server) BindConfig(cfg *config.Config, path string) {
+	if s == nil {
+		return
+	}
+	s.cfg = cfg
+	s.cfgPath = path
 }
 
 // --- JSON-RPC plumbing -----------------------------------------------------
@@ -209,6 +221,12 @@ func (s *Server) invoke(name string, args map[string]any) (any, error) {
 		return s.toolListChannels(args)
 	case "send_message":
 		return s.toolSendMessage(args)
+	case "subscribe":
+		return s.toolSubscribe(args)
+	case "inbox":
+		return s.toolInbox(args)
+	case "mark_read":
+		return s.toolMarkRead(args)
 	default:
 		return nil, fmt.Errorf("unknown tool %q", name)
 	}
@@ -260,6 +278,22 @@ func toolDescriptors() []map[string]any {
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
 				"id_or_slug": str("document"), "from_version": map[string]any{"type": "integer"},
 				"to_version": map[string]any{"type": "integer"}}}},
+		{"name": "subscribe", "description": "Watch channel(s) for @mentions of this actor",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
+				"actor":    str("defaults to the MCP session actor"),
+				"channels": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "empty = all channels"}}}},
+		{"name": "inbox", "description": "New @mentions for this actor since a timestamp or read cursor",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
+				"actor":    str("defaults to the MCP session actor"),
+				"since_ts": str("RFC3339; omit to use the stored cursor"),
+				"channel":  str("limit to one channel"),
+				"limit":    map[string]any{"type": "integer", "default": 50}}}},
+		{"name": "mark_read", "description": "Advance this actor's inbox cursor for a channel",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
+				"actor":   str("defaults to the MCP session actor"),
+				"channel": str("channel slug"),
+				"ts":      str("RFC3339 timestamp of the last item seen")},
+				"required": []string{"channel", "ts"}}},
 	}
 }
 

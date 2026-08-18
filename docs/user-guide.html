@@ -220,11 +220,21 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
  <table>
   <tr><th><code>send_message</code></th><td>post in any channel (auto-creates it)</td></tr>
   <tr><th><code>list_channels</code></th><td>see the conversation it's joining</td></tr>
+  <tr><th><code>subscribe</code></th><td>watch channel(s) for <code>@agent:&lt;id&gt;</code> mentions (empty list = all)</td></tr>
+  <tr><th><code>inbox</code></th><td>new mentions since a timestamp or the stored cursor</td></tr>
+  <tr><th><code>mark_read</code></th><td>advance that cursor (survives <code>leetd</code> restart)</td></tr>
   <tr><th><code>read_doc</code> / <code>write_doc</code></th><td>read and edit documents, block by block</td></tr>
   <tr><th><code>create_task</code> / <code>link</code></th><td>file work and link anything to anything</td></tr>
   <tr><th><code>search</code></th><td>keyword always; semantic via local Ollama when available</td></tr>
   <tr><th><code>audit_query</code> / <code>diff</code></th><td>inspect history like anyone else</td></tr>
  </table>
+ <h2>Mention routing</h2>
+ <p>Type <code>@agent:hermes</code> in a channel (case-insensitive). Only that actor's
+ <code>inbox</code> sees it. Unaddressed messages stay human-only — agents are not
+ notified. A message may tag several agents. Subscriptions and read cursors
+ live in <code>~/.config/leetoffice/node.json</code> (<code>agent_subscriptions</code>).
+ Optional HTTP: <code>GET /api/agent/inbox?actor=agent:hermes&amp;since=…</code> on the
+ local UI port.</p>
  <div class="ok">Every agent write is attributed (<code>agent:hermes</code>) in the same
  git audit trail as yours — and the block-level merge protects your edits from collisions.</div>
 </section>
@@ -334,7 +344,7 @@ document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click'
     {"id": "blk_daily", "type": "heading", "content": "04 Everyday use", "level": 2},
     {"id": "blk_d1", "type": "paragraph", "content": "Persistent menubar: Chat (channels, presence, Enter sends), Docs (create/edit any type, block editor), Memory (auto team context), History (full attributed audit trail with actor filters), Agents, Settings."},
     {"id": "blk_agents", "type": "heading", "content": "05 Add an AI agent", "level": 2},
-    {"id": "blk_a1", "type": "paragraph", "content": "leetd mcp-install prints the MCP config (or copy from the Agents page). Nine tools including send_message and list_channels; every agent write attributed like a human's and protected by block merge."},
+    {"id": "blk_a1", "type": "paragraph", "content": "leetd mcp-install prints the MCP config (or copy from the Agents page). Twelve tools: send_message, list_channels, subscribe, inbox, mark_read, plus store tools. @agent:hermes mentions route to that actor's inbox; unaddressed chat stays human-only. Every agent write attributed like a human's and protected by block merge."},
     {"id": "blk_settings", "type": "heading", "content": "06 Settings & always-on", "level": 2},
     {"id": "blk_s1", "type": "paragraph", "content": "make always-on registers a login service (launchd/systemd). Coordinators see and rotate the team invite code. Editable identity, sync cadence, Ollama endpoint. Settings → check for update talks to GitHub only on click; install verifies SHA-256 and replaces the binary. Backups = copy the store and the bare share (both plain git)."},
     {"id": "blk_trouble", "type": "heading", "content": "07 Troubleshooting", "level": 2},

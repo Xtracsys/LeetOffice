@@ -164,6 +164,9 @@ The MCP server (`leet-mcp`) exposes these tools. All are **attributed + audited*
 | `diff` | `{id, from_version, to_version}` | `{unified_diff, blocks_added, blocks_removed}` |
 | `list_channels` | `{}` | `[{channel, messages}]` — team chat channels + activity (M25) |
 | `send_message` | `{channel, text}` | `{message_id, channel}` — auto-creates the channel (M25) |
+| `subscribe` | `{actor?, channels?}` | `{ok, channels}` — watch for `@agent:<id>` mentions (empty channels = all) |
+| `inbox` | `{actor?, since_ts?, channel?, limit?}` | `{items, count}` — mention-only deltas for subscribed channels |
+| `mark_read` | `{actor?, channel, ts}` | `{ok, channel, ts}` — durable per-channel cursor |
 
 **Tool identity:** each tool call carries an `actor` context (`agent:<id>` or `human:<id>`) injected by the daemon from the authenticated connection. This is what powers audit attribution.
 

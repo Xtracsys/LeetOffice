@@ -59,6 +59,7 @@ func (u *UI) Handler() http.Handler {
 	mux.HandleFunc("/agents", u.handleAgents)
 	mux.HandleFunc("/api/state", u.handleAPIState)
 	mux.HandleFunc("/api/send", u.handleAPISend)
+	mux.HandleFunc("/api/agent/inbox", u.handleAgentInbox)
 	mux.HandleFunc("/audit", u.handleAudit)
 	mux.HandleFunc("/settings", u.handleSettings)
 	mux.HandleFunc("/settings/invite", u.handleInviteRegen)
@@ -298,6 +299,10 @@ func (u *UI) handleAgents(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(`<p>Add this to your client's MCP configuration (<code>claude mcp add</code>, <code>.mcp.json</code>, or your client's settings):</p>`)
 	fmt.Fprintf(&b, `<pre id="snippet">%s</pre>`, html.EscapeString(snippet))
 	b.WriteString(`<p><button onclick="navigator.clipboard.writeText(document.getElementById('snippet').textContent).then(()=>this.textContent='copied ✓')">copy configuration</button></p>`)
+
+	b.WriteString(`</div><div class="card"><h3 style="margin-top:0">Inbox</h3>
+<p class="meta">Agents call <code>subscribe</code> then poll <code>inbox</code> for <code>@agent:&lt;id&gt;</code> mentions. Unaddressed chat is not delivered. <code>mark_read</code> stores the cursor in this node's config.</p>`)
+	fmt.Fprintf(&b, `<p class="meta">HTTP: <code>GET http://%s/api/agent/inbox?actor=agent:hermes</code></p>`, html.EscapeString(u.Config.Listen.HTTP))
 
 	b.WriteString(`</div><div class="card"><h3 style="margin-top:0">HTTP</h3>`)
 	fmt.Fprintf(&b, "<p>Point an MCP HTTP client at <code>http://%s/mcp</code>.</p>", u.Config.Listen.HTTP)

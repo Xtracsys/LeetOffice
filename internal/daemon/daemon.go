@@ -62,6 +62,7 @@ func Start(cfg *config.Config) (*Node, error) {
 	}
 	actor := cfg.Actor
 	mcpSrv := mcp.NewServer(s, repo, searchBackend(cfg, s), actor)
+	mcpSrv.BindConfig(cfg, "")
 	return &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv, syncEveryCh: make(chan struct{}, 1)}, nil
 }
 
@@ -76,6 +77,7 @@ func StartAtPath(cfgPath string) (*Node, *config.Config, error) {
 		return nil, cfg, err
 	}
 	n.cfgPath = cfgPath
+	n.MCP.BindConfig(cfg, cfgPath)
 	return n, cfg, nil
 }
 

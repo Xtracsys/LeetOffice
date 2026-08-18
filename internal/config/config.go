@@ -47,9 +47,20 @@ type Config struct {
 	// node — not team membership (that is the issued certificate).
 	HiddenActors []string `json:"hidden_actors,omitempty"`
 
+	// AgentSubscriptions is the durable agent inbox watch list (actor →
+	// channels + per-channel read cursor). Local to this node.
+	AgentSubscriptions []AgentSubscription `json:"agent_subscriptions,omitempty"`
+
 	// Path is where this config was loaded from (not serialized); it lets the
 	// service installer and MCP snippets reference the real file location.
 	Path string `json:"-"`
+}
+
+// AgentSubscription is one --actor's channel watch and read cursors.
+type AgentSubscription struct {
+	Actor    string            `json:"actor"`
+	Channels []string          `json:"channels"`         // empty = all channels
+	Cursor   map[string]string `json:"cursor,omitempty"` // slug → last-seen RFC3339 ts
 }
 
 // IsHidden reports whether name is on the local hide list.
@@ -76,6 +87,113 @@ func (c *Config) HideActor(name string) {
 		return
 	}
 	c.HiddenActors = append(c.HiddenActors, name)
+}
+
+// CanonicalActor turns "hermes" into "agent:hermes". Prefixed ids are kept.
+func CanonicalActor(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	if !strings.Contains(s, ":") {
+		return "agent:" + s
+	}
+	return s
+}
+
+// ActorKey is a case-folded comparison key for agent ids.
+func ActorKey(s string) string {
+	s = CanonicalActor(s)
+	if i := strings.Index(s, ":"); i >= 0 {
+		return strings.ToLower(s[:i]) + ":" + strings.ToLower(s[i+1:])
+	}
+	return strings.ToLower(s)
+}
+
+// SameActor reports whether a and b name the same actor.
+func SameActor(a, b string) bool { return ActorKey(a) == ActorKey(b) }
+
+// Subscribe registers actor for channels (empty = all). Replaces an existing
+// watch for the same actor and keeps its cursors.
+func (c *Config) Subscribe(actor string, channels []string) AgentSubscription {
+	actor = CanonicalActor(actor)
+	var keep map[string]string
+	out := c.AgentSubscriptions[:0]
+	if c.AgentSubscriptions == nil {
+		out = nil
+	}
+	for _, sub := range c.AgentSubscriptions {
+		if SameActor(sub.Actor, actor) {
+			keep = sub.Cursor
+			continue
+		}
+		out = append(out, sub)
+	}
+	norm := make([]string, 0, len(channels))
+	seen := map[string]bool{}
+	for _, ch := range channels {
+		ch = strings.TrimSpace(strings.TrimPrefix(ch, "#"))
+		if ch == "" || seen[ch] {
+			continue
+		}
+		seen[ch] = true
+		norm = append(norm, ch)
+	}
+	sub := AgentSubscription{Actor: actor, Channels: norm, Cursor: keep}
+	c.AgentSubscriptions = append(out, sub)
+	return sub
+}
+
+// Subscription finds the watch for actor.
+func (c *Config) Subscription(actor string) (AgentSubscription, bool) {
+	if c == nil {
+		return AgentSubscription{}, false
+	}
+	for _, sub := range c.AgentSubscriptions {
+		if SameActor(sub.Actor, actor) {
+			return sub, true
+		}
+	}
+	return AgentSubscription{}, false
+}
+
+// Watches reports whether actor is subscribed to slug (or to all channels).
+func (c *Config) Watches(actor, slug string) bool {
+	sub, ok := c.Subscription(actor)
+	if !ok {
+		return false
+	}
+	if len(sub.Channels) == 0 {
+		return true
+	}
+	slug = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(slug), "#"))
+	for _, ch := range sub.Channels {
+		if strings.EqualFold(ch, slug) {
+			return true
+		}
+	}
+	return false
+}
+
+// MarkRead records actor's cursor for channel (RFC3339 ts).
+func (c *Config) MarkRead(actor, channel, ts string) bool {
+	actor = CanonicalActor(actor)
+	channel = strings.TrimSpace(strings.TrimPrefix(channel, "#"))
+	ts = strings.TrimSpace(ts)
+	if actor == "" || channel == "" || ts == "" {
+		return false
+	}
+	for i := range c.AgentSubscriptions {
+		if !SameActor(c.AgentSubscriptions[i].Actor, actor) {
+			continue
+		}
+		if c.AgentSubscriptions[i].Cursor == nil {
+			c.AgentSubscriptions[i].Cursor = map[string]string{}
+		}
+		c.AgentSubscriptions[i].Cursor[channel] = ts
+		return true
+	}
+	return false
 }
 
 // UnhideActor removes name from the hide list.

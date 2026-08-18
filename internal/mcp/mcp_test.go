@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"leetoffice/internal/chat"
+	"leetoffice/internal/config"
 	"leetoffice/internal/store"
 	leetSync "leetoffice/internal/sync"
 )
@@ -95,14 +96,14 @@ func TestHandshakeAndToolsList(t *testing.T) {
 	}
 	list := call(t, srv, "tools/list", nil)
 	tools, _ := list["tools"].([]any)
-	if len(tools) != 9 {
-		t.Fatalf("expected 9 tools, got %d", len(tools))
+	if len(tools) != 12 {
+		t.Fatalf("expected 12 tools, got %d", len(tools))
 	}
 	names := map[string]bool{}
 	for _, tl := range tools {
 		names[tl.(map[string]any)["name"].(string)] = true
 	}
-	for _, want := range []string{"search", "read_doc", "write_doc", "create_task", "link", "audit_query", "diff", "list_channels", "send_message"} {
+	for _, want := range []string{"search", "read_doc", "write_doc", "create_task", "link", "audit_query", "diff", "list_channels", "send_message", "subscribe", "inbox", "mark_read"} {
 		if !names[want] {
 			t.Fatalf("tool %q missing", want)
 		}
@@ -328,7 +329,7 @@ func TestHTTPHandler(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Result.Tools) != 9 {
+	if len(res.Result.Tools) != 12 {
 		t.Fatalf("HTTP tools/list: %d tools", len(res.Result.Tools))
 	}
 
@@ -378,5 +379,83 @@ func TestAgentChat(t *testing.T) {
 		"name": "send_message", "arguments": map[string]any{"channel": "ops", "text": "  "}})
 	if res2["isError"] != true {
 		t.Fatalf("empty message accepted: %#v", res2)
+	}
+}
+
+func TestAgentInbox(t *testing.T) {
+	srv, st, repo := newTestServer(t)
+	cfgPath := filepath.Join(t.TempDir(), "node.json")
+	cfg := config.Default(t.TempDir(), "agent:hermes")
+	if err := cfg.Save(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	srv.BindConfig(cfg, cfgPath)
+
+	sub := callTool(t, srv, "subscribe", map[string]any{"channels": []string{}}).(map[string]any)
+	if sub["ok"] != true {
+		t.Fatalf("subscribe: %#v", sub)
+	}
+	loaded, err := config.Load(cfgPath)
+	if err != nil || len(loaded.AgentSubscriptions) != 1 || loaded.AgentSubscriptions[0].Actor != "agent:hermes" {
+		t.Fatalf("subscribe did not persist: %v %#v", err, loaded)
+	}
+
+	if _, _, err := chat.Send(st, repo, "human:josh", "general", "standup, no one tagged"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := chat.Send(st, repo, "human:josh", "general", "need @agent:hermes on the join bug"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := chat.Send(st, repo, "human:josh", "ops", "@agent:codex only"); err != nil {
+		t.Fatal(err)
+	}
+
+	box := callTool(t, srv, "inbox", map[string]any{}).(map[string]any)
+	if box["count"].(float64) != 1 {
+		t.Fatalf("inbox should be mention-only: %#v", box)
+	}
+	items := box["items"].([]any)
+	item := items[0].(map[string]any)
+	if item["channel"] != "general" || item["mentioned"] != true || item["author"] != "human:josh" {
+		t.Fatalf("item: %#v", item)
+	}
+	if !strings.Contains(item["content"].(string), "@agent:hermes") {
+		t.Fatalf("content: %#v", item)
+	}
+
+	ts := item["ts"].(string)
+	marked := callTool(t, srv, "mark_read", map[string]any{"channel": "general", "ts": ts}).(map[string]any)
+	if marked["ok"] != true {
+		t.Fatalf("mark_read: %#v", marked)
+	}
+	after := callTool(t, srv, "inbox", map[string]any{}).(map[string]any)
+	if after["count"].(float64) != 0 {
+		t.Fatalf("cursor should hide seen mention: %#v", after)
+	}
+
+	// attribution on send_message unchanged
+	sent := callTool(t, srv, "send_message", map[string]any{
+		"channel": "general", "text": "on it"}).(map[string]any)
+	if sent["commit_sha"] == "" || sent["channel"] != "general" {
+		t.Fatalf("send_message: %#v", sent)
+	}
+	d, _ := st.Load("general")
+	msgs := chat.Messages(d)
+	last := msgs[len(msgs)-1]
+	if last.Author != "agent:hermes" {
+		t.Fatalf("attribution: %#v", last)
+	}
+
+	// cannot read another actor's inbox
+	bad := call(t, srv, "tools/call", map[string]any{
+		"name": "inbox", "arguments": map[string]any{"actor": "agent:codex"}})
+	if bad["isError"] != true {
+		t.Fatalf("cross-actor inbox allowed: %#v", bad)
+	}
+
+	// restart: reload node.json
+	reloaded, err := config.Load(cfgPath)
+	if err != nil || reloaded.AgentSubscriptions[0].Cursor["general"] != ts {
+		t.Fatalf("cursor not durable: %v %#v", err, reloaded)
 	}
 }
