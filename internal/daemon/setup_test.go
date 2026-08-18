@@ -510,6 +510,77 @@ func TestStartSyncOnceLeetScheme(t *testing.T) {
 	}
 }
 
+// TestStartSyncOnceUnrelatedHistories: enroll-shaped client (leet://
+// remote + local scaffold commits) must merge the share, not die with
+// empty packfile. Same cmdSync entry as TestStartSyncOnceLeetScheme.
+func TestStartSyncOnceUnrelatedHistories(t *testing.T) {
+	dir := t.TempDir()
+	coordStore := filepath.Join(dir, "coord", "LeetOffice")
+	if _, err := CreateTeam(filepath.Join(dir, "coord.json"), coordStore, "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(filepath.Join(dir, "coord.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	coord, err := Start(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedWelcome(coord, cfg.Actor)
+	if _, err := coord.SyncOnce(); err != nil {
+		t.Fatal(err)
+	}
+
+	ca, ident := teamCA(t, dir)
+	gitSrv, err := leetNet.ServeGit("127.0.0.1:0", ident.ServerTLSConfig(), bareRootFor(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gitSrv.Close()
+
+	clientID, err := ca.Issue("cli-unrelated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idDir := filepath.Join(dir, "cli-id")
+	if err := clientID.Save(idDir); err != nil {
+		t.Fatal(err)
+	}
+	jcfg := config.Default(filepath.Join(dir, "cli-store"), "human:maya")
+	jcfg.MainShare = leetNet.ShareRemote(gitSrv.Addr().String(), leetNet.DefaultRepoPath)
+	jcfg.IdentityDir = idDir
+	node, err := Start(jcfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := store.NewDoc(store.TypeDoc, "local-scaffold", "Local Scaffold")
+	note.AddParagraph("pre-sync local work")
+	if err := node.Store.Save(note, jcfg.Actor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := node.Repo.CommitAll(jcfg.Actor, "init: store scaffold (pre-sync)"); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := node.SyncOnce()
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "empty packfile") {
+			t.Fatalf("empty packfile must not reach the user: %v", err)
+		}
+		t.Fatalf("SyncOnce unrelated leet://: %v", err)
+	}
+	if !res.Pulled && !res.Merged {
+		t.Fatalf("expected pull/merge, got %+v", res)
+	}
+	if _, err := node.Store.Load("welcome"); err != nil {
+		t.Fatalf("missing coordinator welcome: %v", err)
+	}
+	if _, err := node.Store.Load("local-scaffold"); err != nil {
+		t.Fatalf("lost local pre-sync work: %v", err)
+	}
+}
+
 func TestStartLeetShareRequiresIdentity(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Default(filepath.Join(dir, "store"), "human:maya")

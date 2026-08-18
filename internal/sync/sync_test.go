@@ -315,6 +315,66 @@ func TestCommitAllLeavesCleanTree(t *testing.T) {
 	}
 }
 
+// TestUnrelatedHistoriesMergeOnFirstSync is the enroll-then-sync gate:
+// the client store is scaffolded with its own root commit before the first
+// fetch, so there is no common ancestor with the share. Sync must not
+// surface "empty packfile"; it must keep both sides' docs.
+func TestUnrelatedHistoriesMergeOnFirstSync(t *testing.T) {
+	dir := t.TempDir()
+	bare := filepath.Join(dir, "main.git")
+	if _, err := InitBare(bare); err != nil {
+		t.Fatal(err)
+	}
+	share := "file://" + bare
+
+	sa, a := newNode(t, filepath.Join(dir, "coord"), share)
+	cd := store.NewDoc(store.TypeDoc, "coord-doc", "Coordinator Doc")
+	cd.AddParagraph("from coordinator")
+	if err := sa.Save(cd, "human:josh"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.CommitAll("human:josh", "coord seed"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.push("origin"); err != nil {
+		t.Fatal(err)
+	}
+
+	sb, b := newNode(t, filepath.Join(dir, "client"), share)
+	ld := store.NewDoc(store.TypeDoc, "client-note", "Client Note")
+	ld.AddParagraph("init: store scaffold (pre-sync)")
+	if err := sb.Save(ld, "human:maya"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CommitAll("human:maya", "init: store scaffold (pre-sync)"); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := b.Sync("origin", "human:maya")
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "empty packfile") {
+			t.Fatalf("empty packfile must not reach the user: %v", err)
+		}
+		t.Fatalf("first sync of unrelated histories: %v", err)
+	}
+	if !res.Merged && !res.Pulled {
+		t.Fatalf("expected merge or pull of unrelated histories, got %+v", res)
+	}
+	if _, err := sb.Load("coord-doc"); err != nil {
+		t.Fatalf("client lost coordinator doc: %v", err)
+	}
+	if _, err := sb.Load("client-note"); err != nil {
+		t.Fatalf("client lost local pre-sync work: %v", err)
+	}
+
+	if _, err := a.Sync("origin", "human:josh"); err != nil {
+		t.Fatalf("coord catch-up: %v", err)
+	}
+	if _, err := sa.Load("client-note"); err != nil {
+		t.Fatalf("coord missing client work after merge push: %v", err)
+	}
+}
+
 func assertClean(t *testing.T, r *Repo, when string) {
 	t.Helper()
 	st, err := r.wt.Status()

@@ -150,16 +150,82 @@ func (r *Repo) AddRemote(name, url string) error {
 // plumbing.ZeroHash means the remote is reachable but has no branch yet.
 func (r *Repo) remoteHead(name string) (plumbing.Hash, error) {
 	err := r.repo.Fetch(&git.FetchOptions{RemoteName: name, Force: true})
+	if isEmptyPackfile(err) {
+		// go-git aborts fetch with "empty packfile" when the local repo
+		// and the share have no common ancestor (first enroll after a
+		// local scaffold). Clone the share to a temp repo (empty dest —
+		// that fetch works) and import its objects via file://.
+		if ferr := r.fetchUnrelated(name); ferr != nil {
+			return plumbing.ZeroHash, fmt.Errorf("sync: client and coordinator have unrelated git histories: %w", ferr)
+		}
+		err = nil
+	}
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) &&
 		!errors.Is(err, git.ErrNonFastForwardUpdate) &&
 		!errors.Is(err, transport.ErrEmptyRemoteRepository) {
-		return plumbing.ZeroHash, err
+		return plumbing.ZeroHash, wrapSyncErr(err)
 	}
 	ref, err := r.repo.Reference(plumbing.NewRemoteReferenceName(name, DefaultBranch), true)
 	if err != nil {
 		return plumbing.ZeroHash, nil // empty remote — nothing fetched yet
 	}
 	return ref.Hash(), nil
+}
+
+func isEmptyPackfile(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "empty packfile")
+}
+
+func wrapSyncErr(err error) error {
+	if isEmptyPackfile(err) {
+		return fmt.Errorf("sync: client and coordinator have unrelated git histories: %w", err)
+	}
+	return err
+}
+
+// fetchUnrelated imports the share's objects when a normal fetch yields an
+// empty pack (unrelated histories). The temp clone is a first-fetch into an
+// empty repo — that path works — then we force-fetch it over file://.
+func (r *Repo) fetchUnrelated(remoteName string) error {
+	rem, err := r.repo.Remote(remoteName)
+	if err != nil {
+		return err
+	}
+	urls := rem.Config().URLs
+	if len(urls) == 0 {
+		return fmt.Errorf("remote %s has no URL", remoteName)
+	}
+	tmp, err := os.MkdirTemp("", "leet-unrelated-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	if _, err := git.PlainClone(tmp, true, &git.CloneOptions{
+		URL:           urls[0],
+		ReferenceName: plumbing.NewBranchReferenceName(DefaultBranch),
+		SingleBranch:  true,
+	}); err != nil {
+		return fmt.Errorf("clone share to import objects: %w", err)
+	}
+	const tmpRemote = "leet-unrelated-tmp"
+	_ = r.repo.DeleteRemote(tmpRemote)
+	refspec := config.RefSpec("+refs/heads/" + DefaultBranch + ":refs/remotes/" + remoteName + "/" + DefaultBranch)
+	if _, err := r.repo.CreateRemote(&config.RemoteConfig{
+		Name:  tmpRemote,
+		URLs:  []string{"file://" + tmp},
+		Fetch: []config.RefSpec{refspec},
+	}); err != nil {
+		return err
+	}
+	defer func() { _ = r.repo.DeleteRemote(tmpRemote) }()
+	err = r.repo.Fetch(&git.FetchOptions{RemoteName: tmpRemote, RefSpecs: []config.RefSpec{refspec}, Force: true})
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return err
+	}
+	return nil
 }
 
 // Sync performs the auto-rejoin sequence (§6.5): fetch → block-merge →
@@ -180,7 +246,7 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 		// unborn HEAD (fresh clone): check out the remote tip, or seed by push
 		remoteHash, rerr := r.remoteHead(remoteName)
 		if rerr != nil {
-			return nil, rerr
+			return nil, wrapSyncErr(rerr)
 		}
 		if remoteHash == plumbing.ZeroHash {
 			pushed, err := r.push(remoteName)
@@ -199,12 +265,12 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	}
 	remoteHash, err := r.remoteHead(remoteName)
 	if err != nil {
-		return nil, err
+		return nil, wrapSyncErr(err)
 	}
 	if remoteHash == plumbing.ZeroHash { // reachable but empty → we seed it
 		pushed, err := r.push(remoteName)
 		res.Pushed = pushed
-		return res, err
+		return res, wrapSyncErr(err)
 	}
 	if remoteHash == head.Hash() {
 		// fully up to date — nothing to pull or push
@@ -214,6 +280,25 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	base, err := r.mergeBase(head.Hash(), remoteHash)
 	if err != nil {
 		return nil, fmt.Errorf("merge-base(head=%s, remote=%s): %w", head.Hash(), remoteHash, err)
+	}
+	if base == plumbing.ZeroHash {
+		// Unrelated histories (enroll then local scaffold/digests before
+		// first sync). Block-merge against an empty base so both sides'
+		// docs survive, then push the merge commit (fast-forward of the share).
+		conflicts, merr := r.mergeInto(remoteHash, plumbing.ZeroHash, actor)
+		if merr != nil {
+			return res, fmt.Errorf("sync: merge unrelated histories: %w", merr)
+		}
+		res.Merged = true
+		res.Pulled = true
+		res.Conflicts = conflicts
+		_, perr := r.push(remoteName)
+		res.Pushed = perr == nil
+		final, _ := r.repo.Head()
+		if final != nil {
+			res.HeadCommit = final.Hash().String()
+		}
+		return res, wrapSyncErr(perr)
 	}
 
 	if base == remoteHash { // we're ahead only → just push
@@ -297,7 +382,7 @@ func (r *Repo) mergeBase(a, b plumbing.Hash) (plumbing.Hash, error) {
 	}
 	bases, err := ca.MergeBase(cb)
 	if err != nil || len(bases) == 0 {
-		return plumbing.ZeroHash, errors.New("no merge base")
+		return plumbing.ZeroHash, nil // unrelated histories — Sync merges with an empty base
 	}
 	return bases[0].Hash, nil
 }
