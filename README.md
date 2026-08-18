@@ -7,6 +7,14 @@
 Chat, docs, tasks, and links in a single store — full audit, encrypted sync,
 zero cloud, zero egress.
 
+```sh
+curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh
+```
+
+```sh
+brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb
+```
+
 [![CI](https://github.com/Xtracsys/LeetOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/Xtracsys/LeetOffice/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-red)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-111?logo=go)](go.mod)
