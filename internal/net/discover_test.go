@@ -32,6 +32,15 @@ func TestPeerTXTAssemblyAndParse(t *testing.T) {
 	}
 }
 
+func TestDiscoverPeersHonorsTimeout(t *testing.T) {
+	start := time.Now()
+	_, err := DiscoverPeers(150 * time.Millisecond)
+	elapsed := time.Since(start)
+	if elapsed > 2*time.Second {
+		t.Fatalf("DiscoverPeers took %s (err=%v) — timeout must bound Settings/API", elapsed, err)
+	}
+}
+
 func TestAnnounceRejectsZeroPort(t *testing.T) {
 	_, err := Announce("node", "client", "", "", 0, 0)
 	if err == nil {

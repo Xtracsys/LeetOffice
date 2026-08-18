@@ -30,10 +30,13 @@ var peers peerCache
 // poll endpoint doesn't hammer multicast.
 func onlineNodes() []string {
 	peers.mu.Lock()
-	defer peers.mu.Unlock()
 	if time.Since(peers.at) < 5*time.Second {
-		return peers.entries
+		out := peers.entries
+		peers.mu.Unlock()
+		return out
 	}
+	peers.mu.Unlock()
+
 	found, err := leetNet.DiscoverPeers(700 * time.Millisecond)
 	if err != nil {
 		found = nil
@@ -42,7 +45,9 @@ func onlineNodes() []string {
 	for _, p := range found {
 		ids = append(ids, p.NodeID)
 	}
+	peers.mu.Lock()
 	peers.entries, peers.at = ids, time.Now()
+	peers.mu.Unlock()
 	return ids
 }
 

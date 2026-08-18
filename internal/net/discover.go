@@ -81,7 +81,13 @@ func (a *Announcer) Shutdown() error { return a.srv.Shutdown() }
 
 // DiscoverPeers resolves _leetoffice._tcp on the LAN, collecting answers
 // for up to timeout. Entries without LeetOffice TXT records are ignored.
+// hashicorp/mdns Query has hung past params.Timeout on some Macs (bad
+// mDNS packets); a hard deadline here keeps Settings and /api/state
+// from blocking the UI forever.
 func DiscoverPeers(timeout time.Duration) ([]Peer, error) {
+	if timeout <= 0 {
+		timeout = 700 * time.Millisecond
+	}
 	entries := make(chan *mdns.ServiceEntry, 16)
 	params := mdns.DefaultParams(ServiceName)
 	params.Timeout = timeout
@@ -89,7 +95,20 @@ func DiscoverPeers(timeout time.Duration) ([]Peer, error) {
 	errc := make(chan error, 1)
 	go func() { errc <- mdns.Query(params) }()
 
+	deadline := time.After(timeout + 250*time.Millisecond)
 	var peers []Peer
+	drain := func() {
+		for {
+			select {
+			case e := <-entries:
+				if p, ok := peerFromEntry(e); ok {
+					peers = append(peers, p)
+				}
+			default:
+				return
+			}
+		}
+	}
 	for {
 		select {
 		case e := <-entries:
@@ -97,18 +116,11 @@ func DiscoverPeers(timeout time.Duration) ([]Peer, error) {
 				peers = append(peers, p)
 			}
 		case err := <-errc:
-			for {
-				select {
-				case e := <-entries:
-					if p, ok := peerFromEntry(e); ok {
-						peers = append(peers, p)
-					}
-					continue
-				default:
-				}
-				break
-			}
+			drain()
 			return peers, err
+		case <-deadline:
+			drain()
+			return peers, nil
 		}
 	}
 }
