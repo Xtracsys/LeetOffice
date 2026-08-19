@@ -1,32 +1,32 @@
 # Homebrew formula for LeetOffice. No tap yet — install from this file:
 #   brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb
 #
-# Checksums from https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.7/checksums-0.1.7.txt
+# Checksums from https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.8/checksums-0.1.8.txt
 class Leetd < Formula
   desc "100% local multi-human, multi-agent workspace (chat, docs, git-audited store)"
   homepage "https://github.com/Xtracsys/LeetOffice"
-  version "0.1.7"
+  version "0.1.8"
   license "Apache-2.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.7/leetd-0.1.7-darwin-arm64"
-      sha256 "2b845e8f8861734e2da057ced0cea67d414e17d2b1078e78f1b368bca7a6d5cc"
+      url "https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.8/leetd-0.1.8-darwin-arm64"
+      sha256 "600ecb7291dba8fde8c5cd21d83fa3213b1b3590c80d8c2e076aec2b0f2108c1"
     end
     on_intel do
-      url "https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.7/leetd-0.1.7-darwin-amd64"
-      sha256 "c402bcf44cc1b5623a09e05816536ed3a6a73ee4c95f4b669d1ba6ea9c56f7b4"
+      url "https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.8/leetd-0.1.8-darwin-amd64"
+      sha256 "b3961f01bf7ac489c712add6c50157482f541d324e8d08cad35311777a4243a7"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.7/leetd-0.1.7-linux-arm64"
-      sha256 "f27730371760bed606419abacff8ab0c5eebc126286267c795793d3e133fa95e"
+      url "https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.8/leetd-0.1.8-linux-arm64"
+      sha256 "8bc6a80abc8657dac0ac2028cb90fd6bfa09018517a411c022ca26dfab6ac60d"
     end
     on_intel do
-      url "https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.7/leetd-0.1.7-linux-amd64"
-      sha256 "068223b4c5a5e74051dc2d480ee1b636e73bd0d66457d006d753bc77b3f90fc8"
+      url "https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.8/leetd-0.1.8-linux-amd64"
+      sha256 "63a875133bd5fd21ececa7c470cf1ca5daf8419bc2c4401d92601d5ddde9c0f8"
     end
   end
 
