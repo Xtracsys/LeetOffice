@@ -15,6 +15,7 @@ import (
 	"text/template"
 
 	"leetoffice/internal/config"
+	"leetoffice/internal/hostsign"
 )
 
 const serviceLabel = "dev.leetoffice.leetd"
@@ -73,6 +74,7 @@ func plistContent(label, bin, cfgPath string) (string, error) {
 	</array>
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
+	<key>ThrottleInterval</key><integer>2</integer>
 	<key>ProcessType</key><string>Interactive</string>
 	<key>StandardOutPath</key><string>{{.Home}}/Library/Logs/leetoffice.log</string>
 	<key>StandardErrorPath</key><string>{{.Home}}/Library/Logs/leetoffice.log</string>
@@ -95,6 +97,9 @@ func plistContent(label, bin, cfgPath string) (string, error) {
 }
 
 func installLaunchd(bin string, cfg *config.Config) (string, error) {
+	if err := hostsign.Ensure(bin); err != nil {
+		return "", fmt.Errorf("could not sign %s (launchd kills unsigned binaries on macOS): %w", bin, err)
+	}
 	plistPath, err := homeRel("Library", "LaunchAgents", serviceLabel+".plist")
 	if err != nil {
 		return "", err
@@ -109,10 +114,17 @@ func installLaunchd(bin string, cfg *config.Config) (string, error) {
 	if err := os.WriteFile(plistPath, []byte(content), 0o644); err != nil {
 		return "", err
 	}
-	_ = exec.Command("launchctl", "unload", plistPath).Run() // reload if present
-	if out, err := exec.Command("launchctl", "load", plistPath).CombinedOutput(); err != nil {
-		return fmt.Sprintf("Registered at %s but launchctl failed: %v\n%s", plistPath, err, out), nil
+	uid := os.Getuid()
+	domain := fmt.Sprintf("gui/%d", uid)
+	target := domain + "/" + serviceLabel
+	_ = exec.Command("launchctl", "bootout", target).Run()
+	_ = exec.Command("launchctl", "unload", plistPath).Run()
+	if out, err := exec.Command("launchctl", "bootstrap", domain, plistPath).CombinedOutput(); err != nil {
+		if out2, err2 := exec.Command("launchctl", "load", "-w", plistPath).CombinedOutput(); err2 != nil {
+			return fmt.Sprintf("Registered at %s but launchctl failed: %v\n%s\n%s", plistPath, err, out, out2), nil
+		}
 	}
+	_ = exec.Command("launchctl", "enable", target).Run()
 	return "Installed as a login service (launchd). LeetOffice now starts automatically and keeps running.", nil
 }
 
@@ -121,6 +133,8 @@ func uninstallLaunchd() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	uid := os.Getuid()
+	_ = exec.Command("launchctl", "bootout", fmt.Sprintf("gui/%d/%s", uid, serviceLabel)).Run()
 	_ = exec.Command("launchctl", "unload", plistPath).Run()
 	if err := os.Remove(plistPath); err != nil {
 		if os.IsNotExist(err) {

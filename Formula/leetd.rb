@@ -34,6 +34,10 @@ class Leetd < Formula
     os = OS.mac? ? "darwin" : "linux"
     arch = Hardware::CPU.intel? ? "amd64" : "arm64"
     bin.install "leetd-#{version}-#{os}-#{arch}" => "leetd"
+    if OS.mac?
+      system "codesign", "--force", "--sign", "-", "--identifier", "dev.leetoffice.leetd",
+             "--timestamp=none", bin/"leetd"
+    end
   end
 
   def caveats

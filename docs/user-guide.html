@@ -244,7 +244,9 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
  <h2>Make it always-on</h2>
  <p><b>Settings → make always-on</b> registers LeetOffice as a login service (launchd on
  macOS, systemd on Linux). It starts when you log in, keeps running, and survives
- reboots — no terminal needed ever again. <b>undo</b> removes it. CLI equivalents:
+ reboots — no terminal needed ever again. On macOS the installer and in-app update
+ ad-hoc sign the binary so launchd will not kill it as an unsigned copy.
+ <b>undo</b> removes it. CLI equivalents:
  <code>leetd install</code> / <code>leetd uninstall</code>.</p>
  <h2>Team invite codes</h2>
  <p>Coordinators: Settings shows the current code in a terminal card with
@@ -346,7 +348,7 @@ document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click'
     {"id": "blk_agents", "type": "heading", "content": "05 Add an AI agent", "level": 2},
     {"id": "blk_a1", "type": "paragraph", "content": "leetd mcp-install prints the MCP config (or copy from the Agents page). Twelve tools: send_message, list_channels, subscribe, inbox, mark_read, plus store tools. @agent:hermes mentions route to that actor's inbox; unaddressed chat stays human-only. Every agent write attributed like a human's and protected by block merge."},
     {"id": "blk_settings", "type": "heading", "content": "06 Settings & always-on", "level": 2},
-    {"id": "blk_s1", "type": "paragraph", "content": "make always-on registers a login service (launchd/systemd). Coordinators see and rotate the team invite code. Editable identity, sync cadence, Ollama endpoint. Settings → check for update talks to GitHub only on click; install verifies SHA-256 and replaces the binary. Backups = copy the store and the bare share (both plain git)."},
+    {"id": "blk_s1", "type": "paragraph", "content": "make always-on registers a login service (launchd/systemd). On macOS, install and update ad-hoc sign the binary so launchd will not kill it as an unsigned copy. Coordinators see and rotate the team invite code. Editable identity, sync cadence, Ollama endpoint. Settings → check for update talks to GitHub only on click; install verifies SHA-256 and replaces the binary. Backups = copy the store and the bare share (both plain git)."},
     {"id": "blk_trouble", "type": "heading", "content": "07 Troubleshooting", "level": 2},
     {"id": "blk_r1", "type": "paragraph", "content": "Port 7443 vs sync port for joins; both nodes need v0.1.1 (join-share fix); v0.1.0 main-share.git vs /main.git is fixed in this build; IPv6 mDNS note is benign; upgrade = replace binary + restart; full uninstall removes four listed paths."}
   ],

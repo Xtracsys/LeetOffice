@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"leetoffice/internal/buildinfo"
+	"leetoffice/internal/hostsign"
 )
 
 const (
@@ -386,6 +387,9 @@ func ReplaceBinary(dest string, data []byte) error {
 	}
 	cleanup = false
 	_ = os.Remove(old)
+	if err := hostsign.Ensure(dest); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -20,9 +20,10 @@ import (
 // --- JSON API ----------------------------------------------------------------
 
 type peerCache struct {
-	mu      sync.Mutex
-	at      time.Time
-	entries []string
+	mu       sync.Mutex
+	at       time.Time
+	entries  []string
+	inflight chan struct{}
 }
 
 var peers peerCache
@@ -36,6 +37,17 @@ func onlineNodes() []string {
 		peers.mu.Unlock()
 		return out
 	}
+	if peers.inflight != nil {
+		wait := peers.inflight
+		peers.mu.Unlock()
+		<-wait
+		peers.mu.Lock()
+		out := peers.entries
+		peers.mu.Unlock()
+		return out
+	}
+	done := make(chan struct{})
+	peers.inflight = done
 	peers.mu.Unlock()
 
 	found, err := leetNet.DiscoverPeers(700 * time.Millisecond)
@@ -48,6 +60,8 @@ func onlineNodes() []string {
 	}
 	peers.mu.Lock()
 	peers.entries, peers.at = ids, time.Now()
+	peers.inflight = nil
+	close(done)
 	peers.mu.Unlock()
 	return ids
 }

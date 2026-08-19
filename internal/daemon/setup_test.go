@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"leetoffice/internal/config"
 	leetNet "leetoffice/internal/net"
@@ -605,12 +606,39 @@ func teamCA(t *testing.T, dir string) (*leetNet.CA, *leetNet.Identity) {
 	return ca, ident
 }
 
+func TestListenAndServeExitsWhenHTTPPortTaken(t *testing.T) {
+	dir := t.TempDir()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	cfg := config.Default(filepath.Join(dir, "store"), "human:josh")
+	cfg.Listen.HTTP = ln.Addr().String()
+	cfgPath := filepath.Join(dir, "node.json")
+	if err := cfg.Save(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err = ListenAndServe(ctx, cfgPath)
+	if err == nil {
+		t.Fatal("expected listen error when the UI port is taken")
+	}
+	if !strings.Contains(err.Error(), "another leetd") && !strings.Contains(err.Error(), "address already in use") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestServiceFileContent(t *testing.T) {
 	plist, err := plistContent(serviceLabel, "/usr/local/bin/leetd", "/tmp/n.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"dev.leetoffice.leetd", "<key>RunAtLoad</key><true/>",
+		"<key>KeepAlive</key><true/>", "<key>ThrottleInterval</key><integer>2</integer>",
 		"<string>serve</string>", "/usr/local/bin/leetd"} {
 		if !strings.Contains(plist, want) {
 			t.Fatalf("plist missing %q:\n%s", want, plist)

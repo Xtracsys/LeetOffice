@@ -1,9 +1,11 @@
 package net
 
 import (
+	"context"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/mdns"
@@ -81,29 +83,59 @@ func (a *Announcer) Shutdown() error { return a.srv.Shutdown() }
 
 // DiscoverPeers resolves _leetoffice._tcp on the LAN, collecting answers
 // for up to timeout. Entries without LeetOffice TXT records are ignored.
+//
 // hashicorp/mdns Query has hung past params.Timeout on some Macs (bad
-// mDNS packets); a hard deadline here keeps Settings and /api/state
-// from blocking the UI forever.
+// mDNS packets). The previous hard deadline returned without cancelling
+// Query, so each Settings / chat poll leaked a multicast UDP socket;
+// after a few hours the HTTP listener died and the process stayed up,
+// which launchd treated as healthy. QueryContext + a mutex so overlapping
+// polls share one in-flight lookup.
 func DiscoverPeers(timeout time.Duration) ([]Peer, error) {
 	if timeout <= 0 {
 		timeout = 700 * time.Millisecond
 	}
+	return discoverOnce(timeout)
+}
+
+var discoverGate sync.Mutex
+
+func discoverOnce(timeout time.Duration) ([]Peer, error) {
+	discoverGate.Lock()
+	defer discoverGate.Unlock()
+
 	entries := make(chan *mdns.ServiceEntry, 16)
 	params := mdns.DefaultParams(ServiceName)
 	params.Timeout = timeout
 	params.Entries = entries
-	errc := make(chan error, 1)
-	go func() { errc <- mdns.Query(params) }()
+	// IPv6 multicast bind fails on many Macs and doubled the leaked
+	// sockets; LAN presence is IPv4.
+	params.DisableIPv6 = true
 
-	deadline := time.After(timeout + 250*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout+250*time.Millisecond)
+	defer cancel()
+
+	errc := make(chan error, 1)
+	go func() { errc <- mdns.QueryContext(ctx, params) }()
+
 	var peers []Peer
+	seen := map[string]struct{}{}
+	add := func(e *mdns.ServiceEntry) {
+		p, ok := peerFromEntry(e)
+		if !ok {
+			return
+		}
+		key := p.NodeID + " " + p.Addr
+		if _, dup := seen[key]; dup {
+			return
+		}
+		seen[key] = struct{}{}
+		peers = append(peers, p)
+	}
 	drain := func() {
 		for {
 			select {
 			case e := <-entries:
-				if p, ok := peerFromEntry(e); ok {
-					peers = append(peers, p)
-				}
+				add(e)
 			default:
 				return
 			}
@@ -112,15 +144,18 @@ func DiscoverPeers(timeout time.Duration) ([]Peer, error) {
 	for {
 		select {
 		case e := <-entries:
-			if p, ok := peerFromEntry(e); ok {
-				peers = append(peers, p)
-			}
+			add(e)
 		case err := <-errc:
 			drain()
 			return peers, err
-		case <-deadline:
+		case <-ctx.Done():
 			drain()
-			return peers, nil
+			select {
+			case err := <-errc:
+				return peers, err
+			case <-time.After(300 * time.Millisecond):
+				return peers, nil
+			}
 		}
 	}
 }

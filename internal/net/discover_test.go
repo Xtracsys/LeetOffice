@@ -41,6 +41,23 @@ func TestDiscoverPeersHonorsTimeout(t *testing.T) {
 	}
 }
 
+func TestDiscoverPeersOverlappingLookupsReturn(t *testing.T) {
+	start := time.Now()
+	errc := make(chan error, 4)
+	for i := 0; i < 4; i++ {
+		go func() {
+			_, err := DiscoverPeers(150 * time.Millisecond)
+			errc <- err
+		}()
+	}
+	for i := 0; i < 4; i++ {
+		<-errc
+	}
+	if time.Since(start) > 4*time.Second {
+		t.Fatalf("overlapping DiscoverPeers took %s — QueryContext must cancel", time.Since(start))
+	}
+}
+
 func TestAnnounceRejectsZeroPort(t *testing.T) {
 	_, err := Announce("node", "client", "", "", 0, 0)
 	if err == nil {

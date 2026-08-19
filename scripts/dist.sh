@@ -26,6 +26,9 @@ for target in \
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
     -ldflags "-s -w -X leetoffice/internal/buildinfo.Version=${RELEASE:-dev} -X leetoffice/internal/buildinfo.Commit=${VERSION%-dirty} -X main.version=${RELEASE:-dev} -X main.commit=${VERSION%-dirty}" \
     -o "$out" ./cmd/leetd
+  if [ "$(uname -s)" = Darwin ] && [ "$os" = darwin ]; then
+    codesign --force --sign - --identifier dev.leetoffice.leetd --timestamp=none "$out" || true
+  fi
   # electron-builder extraResources uses ${os}/${arch} = mac/x64, not darwin/amd64
   eb_os="$os"
   eb_arch="$arch"

@@ -99,6 +99,14 @@ chmod +x "${TMP}/${NAME}"
 PREFIX="${PREFIX:-$HOME/.local/bin}"
 mkdir -p "$PREFIX"
 mv "${TMP}/${NAME}" "${PREFIX}/leetd"
+# macOS: a copied Go binary keeps identifier a.out; launchd SIGKILLs it
+# with "Code Signature Invalid". Ad-hoc sign before the first exec.
+if [ "$os" = "darwin" ]; then
+  xattr -d com.apple.quarantine "${PREFIX}/leetd" 2>/dev/null || true
+  xattr -d com.apple.provenance "${PREFIX}/leetd" 2>/dev/null || true
+  codesign --force --sign - --identifier dev.leetoffice.leetd --timestamp=none \
+    "${PREFIX}/leetd" 2>/dev/null || true
+fi
 echo "✓ installed ${PREFIX}/leetd"
 "$PREFIX/leetd" version 2>/dev/null || true
 

@@ -21,6 +21,7 @@ import (
 
 	"leetoffice/internal/chat"
 	"leetoffice/internal/config"
+	"leetoffice/internal/hostsign"
 	leetNet "leetoffice/internal/net"
 	"leetoffice/internal/store"
 )
@@ -38,21 +39,32 @@ type Daemon struct {
 // ListenAndServe is the daemon entrypoint. Missing config is not an error —
 // it means first-run: the wizard is served until a team is created or joined,
 // then the handler swaps to the live node.
+//
+// The HTTP listener is the process's heartbeat: if the port is taken or
+// Serve returns, this function returns so the process exits and launchd
+// KeepAlive can restart it. Logging the bind error and waiting on SIGTERM
+// left a dead coordinator that had to be restarted by hand.
 func ListenAndServe(ctx context.Context, cfgPath string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	quietKnownNoise()
+	if bin, err := os.Executable(); err == nil && isLeetdBinary(bin) {
+		if err := hostsign.Ensure(bin); err != nil {
+			log.Printf("hostsign: %v", err)
+		}
+	}
 	d := &Daemon{cfgPath: cfgPath, ctx: ctx}
-	addr := config.Default("", "").Listen.HTTP
+	addr := httpListenAddr(cfgPath)
 
+	var node *Node
 	if _, err := os.Stat(cfgPath); err == nil {
-		node, cfg, err := StartAtPath(cfgPath)
+		n, cfg, err := StartAtPath(cfgPath)
 		if err != nil {
 			return fmt.Errorf("start node from %s: %w", cfgPath, err)
 		}
+		node = n
 		addr = cfg.Listen.HTTP
-		d.becomeNode(ctx, node)
 	} else {
 		d.mu.Lock()
 		d.handler = d.setupHandler()
@@ -60,17 +72,32 @@ func ListenAndServe(ctx context.Context, cfgPath string) error {
 		log.Printf("setup: no config at %s — first-run wizard on http://%s", cfgPath, addr)
 	}
 
-	httpSrv := &http.Server{Addr: addr, Handler: d}
-	go func() {
-		log.Printf("http: listening on %s", addr)
-		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("http: %v", err)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("http listen %s: %w — another leetd is probably already running", addr, err)
+	}
+	if node != nil {
+		if err := d.becomeNode(ctx, node); err != nil {
+			_ = ln.Close()
+			return err
 		}
+	}
+
+	httpSrv := &http.Server{Handler: d}
+	serveErr := make(chan error, 1)
+	go func() {
+		log.Printf("http: listening on %s", ln.Addr())
+		serveErr <- httpSrv.Serve(ln)
 	}()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	select {
+	case err := <-serveErr:
+		if err != nil && err != http.ErrServerClosed {
+			return fmt.Errorf("http: %w", err)
+		}
+		return nil
 	case <-stop:
 	case <-ctx.Done():
 	}
@@ -79,14 +106,34 @@ func ListenAndServe(ctx context.Context, cfgPath string) error {
 	return httpSrv.Shutdown(shutCtx)
 }
 
+func isLeetdBinary(path string) bool {
+	base := filepath.Base(path)
+	return base == "leetd" || base == "leetd.exe" || strings.HasPrefix(base, "leetd-")
+}
+
+func httpListenAddr(cfgPath string) string {
+	addr := config.Default("", "").Listen.HTTP
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return addr
+	}
+	if cfg.Listen.HTTP != "" {
+		return cfg.Listen.HTTP
+	}
+	return addr
+}
+
 // becomeNode swaps the daemon's handler to the live node and starts its loops.
-func (d *Daemon) becomeNode(ctx context.Context, node *Node) {
+func (d *Daemon) becomeNode(ctx context.Context, node *Node) error {
 	if err := node.StartLoops(ctx); err != nil {
+		// Git/enroll bind can fail when a leftover leetd still holds
+		// 7666/7443; the UI must still come up so the operator can act.
 		log.Printf("node loops: %v (continuing in degraded mode)", err)
 	}
 	d.mu.Lock()
 	d.handler = node.ServeHTTP()
 	d.mu.Unlock()
+	return nil
 }
 
 func (d *Daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +324,10 @@ func (d *Daemon) setupAction(kind string) http.HandlerFunc {
 			return
 		}
 		seedWelcome(node, actor)
-		d.becomeNode(d.ctx, node)
+		if err := d.becomeNode(d.ctx, node); err != nil {
+			http.Error(w, "created config but failed to start: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
