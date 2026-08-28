@@ -8,7 +8,12 @@ Chat, docs, tasks, and links in a single store — full audit, encrypted sync,
 zero cloud, zero egress.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh
+# Pinned, checksum-verified install (never pipe `main` to a shell — see SECURITY note)
+LEET_VER=v1.0.0
+curl -fsSL "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/install.sh" -o /tmp/leetoffice-install.sh
+# Verify SHA256 before executing (replace with the published digest for the release)
+echo "<PUBLISH_RELEASE_SHA256>  /tmp/leetoffice-install.sh" | sha256sum -c -
+sh /tmp/leetoffice-install.sh
 ```
 
 ```sh
@@ -69,10 +74,13 @@ traffic stays quiet). `mark_read` keeps the cursor in `node.json`.
 
 ## Install
 
-**macOS / Linux (one line):**
+**macOS / Linux (pinned, checksum-verified):**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh
+LEET_VER=v1.0.0
+curl -fsSL "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/install.sh" -o /tmp/leetoffice-install.sh
+echo "<PUBLISH_RELEASE_SHA256>  /tmp/leetoffice-install.sh" | sha256sum -c -
+sh /tmp/leetoffice-install.sh
 ```
 
 **Homebrew** (macOS / Linux, no tap yet):
@@ -148,5 +156,20 @@ decisions) → [BUILD_SPEC.md](BUILD_SPEC.md) (the contracts) →
 See [CONTRIBUTING.md](CONTRIBUTING.md) — ground rules are short: stay local,
 never silently overwrite, git is the audit trail, pure Go.
 Vulnerabilities: [SECURITY.md](SECURITY.md).
+
+### Install-script supply-chain guard
+
+LeetOffice install docs are written for **AI coding agents and humans alike** and
+are read by tools that blindly follow `llms.txt` / README instructions. Therefore:
+
+- **Never** publish `curl .../main/... | sh` or `npx <unclaimed-name>` patterns. They
+  are the exact vector behind the 2026-08 `llms.txt` supply-chain attacks (Ars
+  Technica: *Claude, Codex, and Hermes installed unowned code inside corporate
+  networks*).
+- Install commands MUST pin a **tagged release** and verify a **published SHA256**
+  before `sh` executes (see the Install block above).
+- Any package/domain referenced in docs must be **owned and registered** by
+  Xtracsys before shipping. If a name is unclaimed, that is a security bug, not a
+  TODO.
 
 Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)).
