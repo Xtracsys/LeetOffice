@@ -112,6 +112,11 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 	// team invite (coordinator)
 	if u.Config.IsCoordinator() {
 		enrollAddr := "this-machine:7443"
+		if ca, err := leetNet.OpenCA(filepath.Join(u.Config.IdentityDir, "ca")); err == nil {
+			b.WriteString(`<div class="card"><h3 style="margin-top:0">Coordinator trust pin</h3>
+<p class="meta">Share this SHA-256 CA fingerprint out of band with the invite code. Confirm it independently on the joining machine; LAN discovery can be spoofed.</p>`)
+			fmt.Fprintf(&b, `<div class="termcard" style="overflow-wrap:anywhere">%s</div></div>`, html.EscapeString(ca.Fingerprint()))
+		}
 		b.WriteString(`<div class="card"><h3 style="margin-top:0">Team invite</h3>
 <p class="meta">Share the code out of band (it is also how a second machine joins: run LeetOffice there, choose <b>Join a team</b>).</p>`)
 		fmt.Fprintf(&b, `<div class="termcard" style="margin:12px 0"><div class="tl">ENROLLMENT · %s</div><div style="font-size:1.6rem;letter-spacing:.12em">%s</div></div>`,

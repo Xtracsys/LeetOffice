@@ -47,7 +47,6 @@ jobs:
           files: |
             dist/leetd-*
             dist/checksums-*.txt
-            dist/leetoffice-guide.html
           body: |
             ## LeetOffice ${{ github.ref_name }}
 
@@ -55,15 +54,10 @@ jobs:
             chat, docs, tasks, and links in a single store with full audit, encrypted
             sync, and zero cloud.
 
-            ### Install
+            ### Install and verify
 
-            ```sh
-            curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh   # macOS / Linux
-            ```
-
-            Or grab a binary below (darwin/arm64, darwin/amd64, linux/amd64,
-            linux/arm64, windows/amd64), run it, and the first-run wizard takes
-            over at http://127.0.0.1:7667.
-
-            ### Verify
-            `shasum -a 256 -c checksums-*.txt`
+            Download the binary for your platform and the matching
+            `checksums-*.txt` file attached to this release. Verify the binary
+            against its matching filename entry with your platform's SHA-256
+            utility before running it. On first run, the wizard opens at
+            http://127.0.0.1:7667.

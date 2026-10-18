@@ -66,7 +66,9 @@ func CollectInbox(s *store.Store, sub config.AgentSubscription, channel, since s
 	if limit > 200 {
 		limit = 200
 	}
-	channel = Normalize(channel)
+	if channel != "" {
+		channel = Normalize(channel)
+	}
 	chans, err := Channels(s)
 	if err != nil {
 		return nil, err

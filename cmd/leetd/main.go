@@ -9,9 +9,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -94,7 +94,7 @@ usage:
   leetd init [--store DIR] [--actor ID] [--coordinator] [--share URL]   create a node
   leetd serve [--config FILE]                                          run the daemon
   leetd sync   [--config FILE]                                         one sync cycle
-  leetd mcp    [--config FILE] [--actor ID]                            MCP over stdio (agent clients)
+  leetd mcp    [--config FILE]                            authenticated MCP over stdio (LEETOFFICE_AGENT_TOKEN)
   leetd enroll [--config FILE] --coordinator HOST:PORT --secret S      join a team (D8)
   leetd doc    add|edit|show|list ...                                  human store ops
   leetd audit  [--config FILE] [--doc SLUG] [--actor ID]               what changed, by whom
@@ -207,23 +207,23 @@ func cmdSync(args []string) error {
 func cmdMCP(args []string) error {
 	fs := flag.NewFlagSet("mcp", flag.ContinueOnError)
 	cfgPath := fs.String("config", config.DefaultPath(), "config file")
-	actor := fs.String("actor", "", "actor id, e.g. agent:hermes (overrides config)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	token := os.Getenv("LEETOFFICE_AGENT_TOKEN")
+	if token == "" {
+		return fmt.Errorf("LEETOFFICE_AGENT_TOKEN is required; issue a local agent credential in Settings → Agent access")
 	}
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		return err
-	}
-	if *actor != "" {
-		cfg.Actor = *actor
 	}
 	node, err := daemon.Start(cfg)
 	if err != nil {
 		return err
 	}
 	node.MCP.BindConfig(cfg, *cfgPath)
-	return node.MCP.ServeStdio(os.Stdin, os.Stdout)
+	return node.MCP.ServeStdioAuthenticated(token, os.Stdin, os.Stdout)
 }
 
 func cmdDoc(args []string) error {
@@ -335,6 +335,7 @@ func cmdEnroll(args []string) error {
 	fs := flag.NewFlagSet("enroll", flag.ContinueOnError)
 	coordinator := fs.String("coordinator", "", "coordinator enrollment host:port")
 	secret := fs.String("secret", "", "one-time enrollment secret")
+	caFingerprint := fs.String("ca-fingerprint", "", "coordinator CA SHA-256 fingerprint from trusted out-of-band source")
 	cfgPath := fs.String("config", config.DefaultPath(), "config file")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -343,27 +344,22 @@ func cmdEnroll(args []string) error {
 	if err != nil {
 		return err
 	}
-	if *coordinator == "" || *secret == "" {
-		return fmt.Errorf("enroll needs --coordinator host:port and --secret")
+	if *coordinator == "" || *secret == "" || *caFingerprint == "" {
+		return fmt.Errorf("enroll needs --coordinator host:port, --secret, and --ca-fingerprint")
 	}
-	id, info, err := leetNet.Enroll(*coordinator, cfg.NodeID, *secret, "")
+	id, info, err := leetNet.Enroll(*coordinator, cfg.NodeID, *secret, *caFingerprint)
 	if err != nil {
 		return fmt.Errorf("enrollment rejected: %w", err)
+	}
+	// the share URL must target the git service (the coordinator tells us
+	// where it is), not the enrollment port we just used
+	if info.GitAddr == "" {
+		return fmt.Errorf("coordinator did not advertise a sync address; upgrade the coordinator and retry")
 	}
 	if err := id.Save(cfg.IdentityDir); err != nil {
 		return err
 	}
-	// the share URL must target the git service (the coordinator tells us
-	// where it is), not the enrollment port we just used
-	gitAddr := info.GitAddr
-	if gitAddr == "" {
-		host, _, splitErr := net.SplitHostPort(*coordinator)
-		if splitErr != nil {
-			host = *coordinator
-		}
-		gitAddr = net.JoinHostPort(host, fmt.Sprint(leetNet.DefaultPort))
-	}
-	cfg.MainShare = leetNet.ShareRemote(gitAddr, info.GitPath)
+	cfg.MainShare = leetNet.ShareRemote(info.GitAddr, info.GitPath)
 	if err := cfg.Save(*cfgPath); err != nil {
 		return err
 	}
@@ -512,7 +508,6 @@ func cmdMCPInstall(args []string) error {
 	fs := flag.NewFlagSet("mcp-install", flag.ContinueOnError)
 	client := fs.String("client", "", "claude (writes .mcp.json in the current directory when combined with --write)")
 	write := fs.Bool("write", false, "write the config file instead of printing")
-	actor := fs.String("actor", "agent:hermes", "actor id for the agent")
 	cfgPath := fs.String("config", config.DefaultPath(), "config file")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -521,23 +516,27 @@ func cmdMCPInstall(args []string) error {
 	if err != nil {
 		bin = "leetd"
 	}
-	mcpArgs := []string{"mcp", "--config", *cfgPath, "--actor", *actor}
+	mcpArgs := []string{"mcp", "--config", *cfgPath}
 	cfgJSON, _ := json.MarshalIndent(map[string]any{
 		"mcpServers": map[string]any{
-			"leetoffice": map[string]any{"command": bin, "args": mcpArgs},
+			"leetoffice": map[string]any{
+				"command": bin,
+				"args":    mcpArgs,
+				"env":     map[string]string{"LEETOFFICE_AGENT_TOKEN": "PASTE_ONE_TIME_TOKEN"},
+			},
 		},
 	}, "", "  ")
 
 	if !*write {
 		fmt.Println(string(cfgJSON))
-		fmt.Println("\nClaude Code:  claude mcp add leetoffice -- " + bin + " mcp --actor " + *actor)
-		fmt.Println("HTTP:         point an MCP HTTP client at http://127.0.0.1:7667/mcp")
+		fmt.Println("\nIssue a credential in Settings → Agent access and replace PASTE_ONE_TIME_TOKEN.")
+		fmt.Println("HTTP:         POST http://127.0.0.1:7667/mcp with Authorization: Bearer <token>")
 		fmt.Println("\nadd --write to create .mcp.json here for project-scoped use")
 		return nil
 	}
 	switch *client {
 	case "claude":
-		if err := os.WriteFile(".mcp.json", append(cfgJSON, '\n'), 0o644); err != nil {
+		if err := writeMCPConfig(".mcp.json", append(cfgJSON, '\n')); err != nil {
 			return err
 		}
 		fmt.Println("wrote .mcp.json in the current directory (project-scoped for Claude Code)")
@@ -545,6 +544,53 @@ func cmdMCPInstall(args []string) error {
 	default:
 		return fmt.Errorf("--write needs --client claude (other clients: copy the printed snippet)")
 	}
+}
+
+func writeMCPConfig(path string, contents []byte) error {
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to write %s: destination is a symlink", path)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("refusing to replace %s: destination is not a regular file", path)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	temp, err := os.CreateTemp(filepath.Dir(path), ".mcp.json.tmp-*")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(0o600); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if _, err := temp.Write(contents); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		if runtime.GOOS != "windows" {
+			return err
+		}
+		info, statErr := os.Lstat(path)
+		if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return err
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		if err := os.Rename(tempPath, path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Build info, injected at release time. Prefer buildinfo (UI + CLI share

@@ -62,3 +62,27 @@ func TestCollectInboxMentionOnly(t *testing.T) {
 		t.Fatalf("since cursor: %#v %v", later, err)
 	}
 }
+
+func TestCollectInboxEmptyChannelIncludesSubscribedChannel(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, err := leetSync.Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Send(s, repo, "human:josh", "ops", "@agent:hermes please review"); err != nil {
+		t.Fatal(err)
+	}
+
+	sub := config.AgentSubscription{Actor: "agent:hermes", Channels: []string{"ops"}}
+	items, err := CollectInbox(s, sub, "", "", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Channel != "ops" || !items[0].Mentioned {
+		t.Fatalf("inbox %#v", items)
+	}
+}

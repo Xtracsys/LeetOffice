@@ -346,8 +346,8 @@ func (s *Server) toolSendMessage(args map[string]any) (any, error) {
 	}, nil
 }
 
-// sessionActor is the MCP --actor. A request may name the same actor
-// (or a bare id); it may not read another agent's inbox.
+// sessionActor is the authenticated MCP session identity. A request may name
+// the same actor (or a bare id); it may not read another agent's inbox.
 func (s *Server) sessionActor(args map[string]any) (string, error) {
 	want := config.CanonicalActor(s.actor)
 	got := strings.TrimSpace(argStr(args, "actor"))

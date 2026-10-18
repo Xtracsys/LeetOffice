@@ -1,9 +1,10 @@
 #!/bin/sh
-# LeetOffice one-line installer.
+# LeetOffice installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh
+# Do not pipe mutable main-branch content to a shell. Run this only from a
+# trusted, versioned source checkout and pin the binary release explicitly:
+#   sh install.sh --version vX.Y.Z
 #
-# (or from a checkout: sh install.sh [--version vX.Y.Z])
 # Downloads the right static binary for this OS/arch, verifies its checksum,
 # installs to ~/.local/bin (or a prefix you choose), and prints next steps.
 # No dependencies, no root, no telemetry — the binary is ~13MB and fully
@@ -17,7 +18,7 @@ while [ $# -gt 0 ]; do
     *) echo "usage: install.sh [--version vX.Y.Z]" >&2; exit 1 ;;
   esac
 done
-# RELEASE=v0.1.0 is the env equivalent of --version (LEASE was a typo).
+# RELEASE is the environment-variable equivalent of --version.
 if [ -z "$VERSION" ]; then
   VERSION="${RELEASE:-}"
 fi

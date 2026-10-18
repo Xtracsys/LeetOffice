@@ -167,9 +167,13 @@ func issuedNodeID(certPEM []byte) string {
 // Enroll joins a team (§6.3): generate a keypair, send its CSR plus the
 // one-time secret to the coordinator over TLS, and return the resulting
 // identity. The coordinator's certificate must chain to the CA it returns;
-// when caFingerprint is non-empty it must also match exactly (out-of-band
-// pin of the coordinator's CA). Trust-on-first-use otherwise.
+// caFingerprint is the out-of-band pin of the coordinator's CA. It is
+// mandatory: accepting a CA delivered by the same unauthenticated connection
+// would let an active attacker impersonate the coordinator.
 func Enroll(addr, nodeID, secret, caFingerprint string) (*Identity, EnrollResult, error) {
+	if caFingerprint == "" {
+		return nil, EnrollResult{}, errors.New("net: coordinator CA fingerprint is required")
+	}
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, EnrollResult{}, err
@@ -178,10 +182,36 @@ func Enroll(addr, nodeID, secret, caFingerprint string) (*Identity, EnrollResult
 	if err != nil {
 		return nil, EnrollResult{}, err
 	}
-	// InsecureSkipVerify is compensated below: the response carries the
-	// team CA, and the peer we actually talked to must chain to it.
+	// The pinned CA and server certificate are verified in the TLS handshake,
+	// before net/http writes the request body containing the invite secret.
 	client := &http.Client{Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS13},
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // CA pin + chain validation replaces public PKI/name checks.
+			MinVersion:         tls.VersionTLS13,
+			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+				if len(rawCerts) < 2 {
+					return errors.New("net: coordinator did not send its CA certificate")
+				}
+				leaf, err := x509.ParseCertificate(rawCerts[0])
+				if err != nil {
+					return err
+				}
+				caCert, err := x509.ParseCertificate(rawCerts[1])
+				if err != nil {
+					return err
+				}
+				if !caCert.IsCA || Fingerprint(caCert) != caFingerprint {
+					return errors.New("net: coordinator CA fingerprint mismatch")
+				}
+				pool := x509.NewCertPool()
+				pool.AddCert(caCert)
+				_, err = leaf.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}})
+				if err != nil {
+					return fmt.Errorf("net: coordinator certificate is not signed by the pinned CA: %w", err)
+				}
+				return nil
+			},
+		},
 	}}
 	body, _ := json.Marshal(enrollRequest{CSR: string(csrPEM), Secret: secret})
 	resp, err := client.Post("https://"+addr+"/enroll", "application/json", bytes.NewReader(body))
@@ -212,7 +242,7 @@ func Enroll(addr, nodeID, secret, caFingerprint string) (*Identity, EnrollResult
 	if err != nil {
 		return nil, EnrollResult{}, err
 	}
-	if caFingerprint != "" && Fingerprint(caCert) != caFingerprint {
+	if Fingerprint(caCert) != caFingerprint {
 		return nil, EnrollResult{}, errors.New("net: coordinator CA fingerprint mismatch")
 	}
 	if len(resp.TLS.PeerCertificates) == 0 {

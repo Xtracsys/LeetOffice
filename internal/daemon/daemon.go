@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"leetoffice/internal/agentaccess"
 	"leetoffice/internal/config"
 	"leetoffice/internal/httpui"
 	"leetoffice/internal/mcp"
@@ -32,6 +33,7 @@ type Node struct {
 	Store   *store.Store
 	Repo    *leetSync.Repo
 	MCP     *mcp.Server
+	Access  *agentaccess.Manager
 	cfgPath string
 	enroll  *leetNet.EnrollmentServer // live coordinator secret; rotated from settings
 	// syncEveryCh tells syncLoop to Reset the ticker from Cfg.SyncEverySec.
@@ -63,9 +65,17 @@ func Start(cfg *config.Config) (*Node, error) {
 		}
 	}
 	actor := cfg.Actor
+	if err := validateAgentAccessPath(cfg.StoreDir, cfg.IdentityDir); err != nil {
+		return nil, err
+	}
+	access, err := agentaccess.Open(cfg.IdentityDir)
+	if err != nil {
+		return nil, err
+	}
 	mcpSrv := mcp.NewServer(s, repo, searchBackend(cfg, s), actor)
+	mcpSrv.SetAuthenticator(access)
 	mcpSrv.BindConfig(cfg, "")
-	n := &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv, syncEveryCh: make(chan struct{}, 1)}
+	n := &Node{Cfg: cfg, Store: s, Repo: repo, MCP: mcpSrv, Access: access, syncEveryCh: make(chan struct{}, 1)}
 	mcpSrv.OnWrite = n.KickSync
 	return n, nil
 }
@@ -115,7 +125,7 @@ func searchBackend(cfg *config.Config, s *store.Store) mcp.SearchFunc {
 func (n *Node) ServeHTTP() http.Handler {
 	mux := http.NewServeMux()
 	bin, _ := os.Executable()
-	ui := &httpui.UI{Store: n.Store, Repo: n.Repo, Config: n.Cfg, BinaryPath: bin, CfgPath: n.cfgPath}
+	ui := &httpui.UI{Store: n.Store, Repo: n.Repo, Config: n.Cfg, Access: n.Access, BinaryPath: bin, CfgPath: n.cfgPath}
 	if n.enroll != nil {
 		ui.RotateEnrollment = n.enroll.SetSecret
 	}

@@ -64,7 +64,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;padding-top:16px;font-fa
 
 <div class="wrap">
 <section class="hero">
- <div class="eyebrow"><span class="pulse"></span>FILE / GUIDE · v0.1.1 · 100% LOCAL</div>
+ <div class="eyebrow"><span class="pulse"></span>FILE / GUIDE · 100% LOCAL</div>
  <h1>From zero to a team workspace</h1>
  <p class="sub">LeetOffice is a workspace where humans and AI agents share one store — chat, docs,
  tasks, links — with every change attributed in a git audit trail. No cloud, no accounts,
@@ -84,39 +84,20 @@ footer{border-top:1px solid var(--line);margin-top:40px;padding-top:16px;font-fa
 
 <!-- ================================================== 01 INSTALL -->
 <section class="panel on" id="panel-install">
- <h2>One line (macOS &amp; Linux)</h2>
- <pre>curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh</pre>
- <p>The script detects your platform, downloads the latest release (<b>v0.1.1</b>),
- <b>verifies its SHA-256 checksum</b>, installs to <code>~/.local/bin</code>, and tells
- you what to do next. If that folder isn't on your <span class="mono">PATH</span>, it
- shows the exact line to add.</p>
+ <h2>Verified release artifacts</h2>
+ <p>Choose a specific, trusted release from <span class="mono">github.com/Xtracsys/LeetOffice/releases</span>.
+ Download the platform binary and matching <code>checksums-*.txt</code> file from that same
+ release. Before running the binary, verify it against the entry for its exact filename
+ in that checksum file with your platform's SHA-256 utility. Install only the verified
+ binary somewhere on your <span class="mono">PATH</span>.</p>
+ <div class="note">Do not pipe an unpinned, mutable branch script or formula into a shell.
+ If using a source installer, run it only from a trusted, versioned checkout and pin the
+ release explicitly. This guide does not assume a particular current release tag or hash.</div>
 
- <h2>Homebrew (macOS &amp; Linux, no tap yet)</h2>
- <pre>brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb</pre>
-
- <h2>From a GitHub release (any platform, no script)</h2>
- <ol>
-  <li>Open the latest <span class="mono">github.com/Xtracsys/LeetOffice/releases</span></li>
-  <li>Download your binary:
-   <table>
-   <tr><th>macOS (Apple Silicon)</th><td><code>leetd-VERSION-darwin-arm64</code></td></tr>
-   <tr><th>macOS (Intel)</th><td><code>leetd-VERSION-darwin-amd64</code></td></tr>
-   <tr><th>Linux x86-64 / arm64</th><td><code>leetd-VERSION-linux-amd64</code> / <code>-arm64</code></td></tr>
-   <tr><th>Windows</th><td><code>leetd-VERSION-windows-amd64.exe</code></td></tr>
-   </table></li>
-  <li>Verify it: <pre>shasum -a 256 -c checksums-VERSION.txt <span class="c"># in the download folder</span></pre></li>
-  <li>Make it runnable and put it somewhere on your <span class="mono">PATH</span>:
-   <pre>chmod +x leetd-VERSION-* &amp;&amp; mv leetd-VERSION-darwin-arm64 /usr/local/bin/leetd</pre></li>
- </ol>
- <div class="note">macOS Gatekeeper will warn about an unsigned binary the first time.
- Right-click → Open (or System Settings → Privacy &amp; Security → Open Anyway).
- Signing/notarization is on the roadmap — see the README's "What it isn't (yet)".</div>
-
- <h2>From source</h2>
- <pre>git clone https://github.com/Xtracsys/LeetOffice &amp;&amp; cd leetoffice
-go build -o leetd ./cmd/leetd   <span class="c"># pure Go, no cgo, no system deps</span></pre>
- <p>Check what you built:</p>
- <pre>leetd version   <span class="c"># e.g. leetoffice v0.1.1 (584d9ab) darwin/arm64</span></pre>
+ <h2>Build from source</h2>
+ <p>Use a trusted source checkout at a reviewed, pinned commit. From the repository root:</p>
+ <pre>go build -o leetd ./cmd/leetd</pre>
+ <p>Check the installed build's own version with <code>leetd version</code>.</p>
 </section>
 
 <!-- ================================================== 02 FIRST RUN -->
@@ -130,11 +111,14 @@ go build -o leetd ./cmd/leetd   <span class="c"># pure Go, no cgo, no system dep
  plain language:</p>
  <ul>
   <li><b>Start a new team</b> — this machine keeps the shared store and can invite others.
-   After setup you'll see your <b>team invite code</b>; share it out of band (message it to
-   your teammate however you like).</li>
+   Settings shows the <b>team invite code</b> and SHA-256 CA fingerprint. Share the
+   fingerprint through a trusted out-of-band channel first; send the invite code only
+   after the joining person confirms the displayed fingerprint matches.</li>
   <li><b>Join a team on my network</b> — coordinators on your LAN are auto-discovered and
-   offered in a dropdown; pick one, paste the invite code, click Join. One click handles
-   the certificate enrollment and encrypted-sync setup.</li>
+   offered in a dropdown; pick one, then compare its displayed CA fingerprint with the
+   value received independently from the coordinator. Do not rely on LAN discovery alone.
+   Only after the fingerprints match, enter the invite code and click Join. The pinned
+   TLS handshake verifies the coordinator before sending the invite secret.</li>
   <li><b>Just me, for now</b> — a private workspace; you can join or start a team later.</li>
  </ul>
  <div class="ok">Type your name and go. You land in a living workspace: a welcome doc,
@@ -153,10 +137,14 @@ go build -o leetd ./cmd/leetd   <span class="c"># pure Go, no cgo, no system dep
  <h2>Second machine, sixty seconds</h2>
  <ol>
   <li>Install LeetOffice there (tab 01).</li>
-  <li>Run <code>leetd</code> → choose <b>Join a team</b>. Your coordinator appears in the
-   dropdown automatically (mDNS); if not, type <code>hostname.local:7443</code>.</li>
-  <li>Paste the invite code — the coordinator shows it on its <b>Settings</b> page in a
-   dark terminal card, with a regenerate button.</li>
+  <li>Ask the coordinator for its SHA-256 CA fingerprint through a trusted out-of-band
+   channel. In <b>Settings</b>, the coordinator can also share the invite code, but do not
+   send that secret yet.</li>
+  <li>Run <code>leetd</code> → choose <b>Join a team</b>. Select the discovered coordinator
+   (or enter <code>hostname.local:7443</code>), then compare the displayed fingerprint with
+   the independently received value. Stop if they differ; discovery is not proof of identity.</li>
+  <li>Only after the fingerprint matches, provide the invite code and join. The client
+   verifies the pinned CA during TLS before transmitting the invite secret.</li>
  </ol>
  <div class="ok">Enrollment issues that machine an mTLS certificate. From then on, both
  machines sync every few seconds over encrypted, mutually-authenticated TLS. Either can
@@ -167,8 +155,9 @@ go build -o leetd ./cmd/leetd   <span class="c"># pure Go, no cgo, no system dep
  the later one is flagged with a red "conflicting edit" banner you can resolve by editing.
  Nothing is ever silently overwritten.</p>
  <h2>More machines</h2>
- <p>Same join flow, same invite code (regenerate it in Settings whenever you want to
- rotate access — already-joined nodes keep working).</p>
+ <p>Use the same verification sequence for every join: verify the coordinator's CA
+ fingerprint out of band before providing the invite code. Regenerating the invite code
+ in Settings invalidates the old code but does not affect already-enrolled nodes.</p>
 </section>
 
 <!-- ================================================== 04 DAILY -->
@@ -206,16 +195,34 @@ go build -o leetd ./cmd/leetd   <span class="c"># pure Go, no cgo, no system dep
  a teammate with its own identity. The <b>Agents</b> page shows your exact configuration
  with a copy button; or from a terminal:</p>
  <pre>leetd mcp-install                    <span class="c"># prints the snippet</span>
-leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json here for Claude Code</span></pre>
- <p>The snippet looks like:</p>
+leetd mcp-install --client claude --write   <span class="c"># writes .mcp.json (mode 0600)</span></pre>
+ <p>The <code>--write</code> option uses a same-directory temporary file and refuses
+ an existing symlink or non-regular <code>.mcp.json</code> destination. Run it in a
+ trusted project directory; never commit a real one-time token.</p>
+ <p>Create a local identity in <b>Settings → Agent access</b> and select only the MCP
+ tools it needs; no tools are granted by default. Identities, credentials, and grants
+ stay on this node, outside the synchronized store. A new or rotated credential is shown
+ only in that response and cannot be recovered. Keep it in the MCP client's private
+ environment configuration, not in a shared project file. <code>leetd mcp-install</code>
+ prints a ready-to-copy configuration with a placeholder.</p>
+ <p>The configuration uses the required <code>LEETOFFICE_AGENT_TOKEN</code> environment
+ variable (replace the obvious placeholder with the one-time credential; never put a
+ real token in documentation):</p>
  <pre>{
   "mcpServers": {
     "leetoffice": {
       "command": "leetd",
-      "args": ["mcp", "--actor", "agent:hermes"]
+      "args": ["mcp"],
+      "env": { "LEETOFFICE_AGENT_TOKEN": "PASTE_ONE_TIME_TOKEN" }
     }
   }
 }</pre>
+ <p>Available local tool scopes are <code>search</code>, <code>read_doc</code>,
+ <code>write_doc</code>, <code>create_task</code>, <code>link</code>,
+ <code>audit_query</code>, <code>diff</code>, <code>list_channels</code>,
+ <code>send_message</code>, <code>subscribe</code>, <code>inbox</code>, and
+ <code>mark_read</code>. The server derives each session's immutable <code>agent:&lt;id&gt;</code>
+ identity from the credential; a caller-supplied actor or display name cannot override it.</p>
  <h2>What the agent can do</h2>
  <table>
   <tr><th><code>send_message</code></th><td>post in any channel (auto-creates it)</td></tr>
@@ -229,14 +236,16 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
   <tr><th><code>audit_query</code> / <code>diff</code></th><td>inspect history like anyone else</td></tr>
  </table>
  <h2>Mention routing</h2>
- <p>Type <code>@agent:hermes</code> in a channel (case-insensitive). Only that actor's
+ <p>Type <code>@agent:&lt;id&gt;</code> in a channel (case-insensitive), using the immutable
+ agent ID shown in Settings → Agent access. Only that identity's
  <code>inbox</code> sees it. Unaddressed messages stay human-only — agents are not
  notified. A message may tag several agents. Subscriptions and read cursors
  live in <code>~/.config/leetoffice/node.json</code> (<code>agent_subscriptions</code>).
- Optional HTTP: <code>GET /api/agent/inbox?actor=agent:hermes&amp;since=…</code> on the
- local UI port.</p>
- <div class="ok">Every agent write is attributed (<code>agent:hermes</code>) in the same
- git audit trail as yours — and the block-level merge protects your edits from collisions.</div>
+ Optional HTTP: <code>GET /api/agent/inbox</code> with the <code>inbox</code> scope and an <code>Authorization: Bearer</code>
+ credential on the local UI port; the server derives identity from that credential.</p>
+ <div class="ok">Every agent write is attributed to the immutable credential identity
+ (<code>agent:&lt;id&gt;</code>) in the same git audit trail as yours — and block-level merge
+ protects your edits from collisions.</div>
 </section>
 
 <!-- ================================================== 06 SETTINGS -->
@@ -249,9 +258,10 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
  <b>undo</b> removes it. CLI equivalents:
  <code>leetd install</code> / <code>leetd uninstall</code>.</p>
  <h2>Team invite codes</h2>
- <p>Coordinators: Settings shows the current code in a terminal card with
- <b>regenerate invite code</b>. Rotation invalidates the old code but never kicks out
- already-enrolled machines.</p>
+ <p>Coordinators: Settings shows the SHA-256 CA fingerprint and current invite code.
+ Share the fingerprint out of band and have the joining person verify it before you
+ send the invite secret. The <b>regenerate invite code</b> button invalidates the old
+ code but never kicks out already-enrolled machines.</p>
  <h2>Everything else on the page</h2>
  <ul>
   <li><b>Your name</b> — the attribution stamped on every change you make</li>
@@ -263,7 +273,7 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
  <h2>Update from inside the app</h2>
  <p><b>Settings → check for update</b> asks GitHub for the latest release.
  Nothing is downloaded until you click <b>install</b>. The new binary is
- checksum-verified (the same SHA-256 file as the installer) and replaces
+ checksum-verified against its release's matching SHA-256 manifest and replaces
  this one. Restart LeetOffice to run it. GitHub is contacted only on those
  clicks — the daemon never phones home on its own.</p>
  <p>CLI: <code>leetd update</code> (check) and <code>leetd update --apply</code>.</p>
@@ -283,11 +293,14 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
      different <code>listen.http</code> in <code>~/.config/leetoffice/node.json</code>.</td></tr>
  <tr><th>Join failed — "could not reach enrollment"</th>
      <td>Use the coordinator's <b>enrollment</b> address (port 7443 by default — shown on
-     its Settings page), not its sync port. Same Wi-Fi/network? mDNS usually fills this
-     in for you.</td></tr>
+     its Settings page), not its sync port. Before entering the invite code, verify the
+     coordinator's CA fingerprint against the value received through a trusted out-of-band
+     channel; mDNS discovery alone is not trusted.</td></tr>
  <tr><th>Teammate joined but seems on a separate team</th>
-     <td>Run <code>leetd version</code> on both machines — both need <b>v0.1.1</b> (the
-     join-share fix). Re-join with <code>leetd enroll --coordinator host:7443 --secret CODE</code>.</td></tr>
+     <td>Check that both machines run compatible builds with <code>leetd version</code>.
+     Re-check the selected coordinator and team share. When using the CLI enrollment flow,
+     <code>--ca-fingerprint</code> is required and the invite secret is sent only after the
+     TLS certificate matches that pin.</td></tr>
  <tr><th>IPv6 mDNS note in the console</th>
      <td>One line saying IPv6 multicast is unavailable is normal on many networks;
      discovery continues over IPv4.</td></tr>
@@ -295,15 +308,13 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
      <td>Check History on both — sync errors log there. Confirm both nodes' Settings show
      the same team share. <b>sync now</b> forces a cycle.</td></tr>
  <tr><th>Joined node logs <code>repository not found</code></th>
-     <td>v0.1.0 named the coordinator share <code>~/main-share.git</code> while joiners
-     asked for <code>/main.git</code>. <b>Upgrade the coordinator to v0.1.1</b> (this
-     build serves both names). Or migrate: <code>mv ~/main-share.git ~/main.git</code>,
-     set <code>main_share</code> in <code>~/.config/leetoffice/node.json</code> to
-     <code>file://…/main.git</code>, restart. Already-joined clients keep their
-     <code>leet://host:7666/main.git</code> URL.</td></tr>
+     <td>Confirm the coordinator's configured team share exists and that its enrollment
+     service advertises the expected sync path. The current server also serves a legacy
+     <code>main-share.git</code> share when joiners request <code>main.git</code>. Back up
+     the share before changing paths; do not rename or delete it blindly.</td></tr>
  <tr><th>Upgrade</th>
      <td>Settings → <b>check for update</b> → <b>install</b> (checksum-verified),
-     then restart. Or re-run the installer / <code>leetd update --apply</code>.
+     then restart, or use <code>leetd update --apply</code>.
      Stores are forward-compatible; <code>leetd check</code> self-tests.</td></tr>
  <tr><th>Full uninstall</th>
      <td><code>leetd uninstall</code> (service), delete the binary, and — if you really
@@ -316,7 +327,7 @@ leetd mcp-install --client claude --write   <span class="c"># drops .mcp.json he
  usually enough to diagnose fast. Security: see SECURITY.md (private advisories).</p>
 </section>
 
-<footer>LEETOFFICE · 100% LOCAL, NO EGRESS · APACHE-2.0 · THIS GUIDE IS A STANDALONE FILE — SAVE OR PRINT IT (Ctrl/Cmd+P prints all tabs)</footer>
+<footer>LEETOFFICE · LOCAL-FIRST · NO BACKGROUND EGRESS · APACHE-2.0 · THIS GUIDE IS A STANDALONE FILE — SAVE OR PRINT IT (Ctrl/Cmd+P prints all tabs)</footer>
 </div>
 
 <script>
@@ -338,19 +349,19 @@ document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click'
   "tags": ["guide", "install", "handbook"],
   "blocks": [
     {"id": "blk_install", "type": "heading", "content": "01 Install", "level": 2},
-    {"id": "blk_i1", "type": "paragraph", "content": "Latest is v0.1.1. One line on macOS/Linux: curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh — platform detection, SHA-256 verification, installs to ~/.local/bin. Homebrew: brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb. Or download a v0.1.1 release binary, verify checksums, place on PATH. From source: go build -o leetd ./cmd/leetd."},
+    {"id": "blk_i1", "type": "paragraph", "content": "Choose a specific trusted GitHub release; download the platform binary and matching checksums-*.txt from the same release and verify the binary against its exact filename entry before running it. Do not pipe mutable branch content into a shell. Or build from a trusted source checkout pinned to a reviewed commit: go build -o leetd ./cmd/leetd."},
     {"id": "blk_firstrun", "type": "heading", "content": "02 First run", "level": 2},
-    {"id": "blk_f1", "type": "paragraph", "content": "Run leetd with no arguments; open http://127.0.0.1:7667. Wizard: start a team (coordinator + invite code), join a team (auto-discovered coordinator + invite code), or just me. Lands on a living workspace: welcome doc, #general greeting, starter channels."},
+    {"id": "blk_f1", "type": "paragraph", "content": "Run leetd with no arguments; open http://127.0.0.1:7667. Wizard: start a team (coordinator + invite code), join a team (auto-discovered coordinator + invite code), or just me. For a join, compare the coordinator CA fingerprint with the value received out of band before entering or sending the invite secret; discovery alone is not proof. Lands on a living workspace: welcome doc, #general greeting, starter channels."},
     {"id": "blk_teams", "type": "heading", "content": "03 Build a team", "level": 2},
-    {"id": "blk_t1", "type": "paragraph", "content": "Second machine: install, run, Join a team, pick the discovered coordinator (or hostname.local:7443), paste the invite code. mTLS enrollment; encrypted sync every ~5s; offline nodes catch up in one exchange; block-level merge keeps both sides of concurrent edits."},
+    {"id": "blk_t1", "type": "paragraph", "content": "Second machine: install, run Join a team, select the discovered coordinator (or hostname.local:7443), and independently compare its SHA-256 CA fingerprint with the coordinator's value received through a trusted out-of-band channel. Only after it matches, provide the invite code; the pinned TLS handshake verifies the coordinator before sending the invite secret. mTLS enrollment; encrypted sync; offline nodes catch up; block-level merge keeps both sides of concurrent edits."},
     {"id": "blk_daily", "type": "heading", "content": "04 Everyday use", "level": 2},
     {"id": "blk_d1", "type": "paragraph", "content": "Persistent menubar: Chat (channels, presence, Enter sends), Docs (create/edit any type, block editor), Memory (auto team context), History (full attributed audit trail with actor filters), Agents, Settings."},
     {"id": "blk_agents", "type": "heading", "content": "05 Add an AI agent", "level": 2},
-    {"id": "blk_a1", "type": "paragraph", "content": "leetd mcp-install prints the MCP config (or copy from the Agents page). Twelve tools: send_message, list_channels, subscribe, inbox, mark_read, plus store tools. @agent:hermes mentions route to that actor's inbox; unaddressed chat stays human-only. Every agent write attributed like a human's and protected by block merge."},
+    {"id": "blk_a1", "type": "paragraph", "content": "Create a local identity in Settings → Agent access and grant only the required MCP tool scopes (none by default); credentials and grants stay on this node. Configure the one-time credential as LEETOFFICE_AGENT_TOKEN in the MCP client's private environment configuration. The server derives immutable agent:<id> attribution from that credential, never from caller-supplied actor/name. Available scopes: search, read_doc, write_doc, create_task, link, audit_query, diff, list_channels, send_message, subscribe, inbox, mark_read. @agent:<id> mentions route to that identity's inbox; unaddressed chat stays human-only. leetd mcp-install --client claude --write creates or replaces .mcp.json using a same-directory temporary file at mode 0600 and refuses symlink or non-regular destinations; run only in a trusted project directory. Replace PASTE_ONE_TIME_TOKEN before use, keep the configuration private, and never commit a real token."},
     {"id": "blk_settings", "type": "heading", "content": "06 Settings & always-on", "level": 2},
     {"id": "blk_s1", "type": "paragraph", "content": "make always-on registers a login service (launchd/systemd). On macOS, install and update ad-hoc sign the binary so launchd will not kill it as an unsigned copy. Coordinators see and rotate the team invite code. Editable identity, sync cadence, Ollama endpoint. Settings → check for update talks to GitHub only on click; install verifies SHA-256 and replaces the binary. Backups = copy the store and the bare share (both plain git)."},
     {"id": "blk_trouble", "type": "heading", "content": "07 Troubleshooting", "level": 2},
-    {"id": "blk_r1", "type": "paragraph", "content": "Port 7443 vs sync port for joins; both nodes need v0.1.1 (join-share fix); v0.1.0 main-share.git vs /main.git is fixed in this build; IPv6 mDNS note is benign; upgrade = replace binary + restart; full uninstall removes four listed paths."}
+    {"id": "blk_r1", "type": "paragraph", "content": "Use the enrollment port, not the sync port; verify the coordinator CA fingerprint out of band before providing the invite secret. Both nodes need compatible builds. The current server can serve a legacy main-share.git share when joiners request main.git; check coordinator share configuration before changing paths. IPv6 mDNS note is benign; upgrade = replace binary + restart; full uninstall removes four listed paths."}
   ],
   "properties": {"audience": "end users", "format": "standalone tabbed HTML", "tabs": 7},
   "audit": {"last_editor": "human:release", "last_commit": "docs"}

@@ -1,5 +1,5 @@
-# Homebrew formula for LeetOffice. No tap yet — install from this file:
-#   brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb
+# Homebrew formula for LeetOffice. No tap is configured. Do not install this
+# formula from the mutable main-branch raw URL; use a trusted, versioned copy.
 #
 # Checksums from https://github.com/Xtracsys/LeetOffice/releases/download/v0.1.8/checksums-0.1.8.txt
 class Leetd < Formula

@@ -12,25 +12,32 @@ import (
 
 const xbCSS = `
 :root{
- --red:#d92a2a; --bg:#fff; --surface:#f8f5eb; --text:#111; --muted:#5b5b57; --faint:#8a8a85;
- --line:rgba(17,17,17,.12); --line2:rgba(17,17,17,.24); --wash:rgba(17,17,17,.05);
- --term:#141414; --termline:#2a2a2a; --termtext:#f8f5eb;
+ color-scheme:light;
+ --red:#d92a2a; --bg:#fbfaf7; --surface:#f1eee5; --text:#161615; --muted:#575751; --faint:#686861;
+ --line:rgba(22,22,21,.13); --line2:rgba(22,22,21,.28); --wash:rgba(22,22,21,.055);
+ --term:#171716; --termline:#383835; --termtext:#f8f5ed;
+ --good:#37835a; --warn:#a5651c;
  --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
  --mono:'JetBrains Mono',ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-padding-top:64px}
+[hidden]{display:none!important}
+html{scroll-padding-top:64px;scroll-behavior:smooth}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
-header.topnav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.86);
+header.topnav{position:sticky;top:0;z-index:100;background:rgba(251,250,247,.96);
  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
 .navwrap{max-width:1080px;margin:0 auto;padding:0 24px;height:56px;display:flex;align-items:center;gap:24px}
 a{color:inherit;text-decoration:none}
-code{font-family:var(--mono);font-size:.84em;background:var(--wash);border:1px solid var(--line);padding:.05em .35em;border-radius:3px}
+a:hover{color:var(--red)}
+a:focus-visible,button:focus-visible,[tabindex]:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--red);outline-offset:3px}
+.skiplink{position:fixed;left:12px;top:8px;z-index:1000;transform:translateY(-160%);background:var(--text);color:#fff;padding:9px 12px;font-family:var(--mono);font-size:11px}
+.skiplink:focus{transform:translateY(0);color:#fff}
+code{font-family:var(--mono);font-size:.84em;background:var(--wash);border:1px solid var(--line);padding:.05em .35em}
 pre{font-family:var(--mono);font-size:.8rem;background:var(--term);color:var(--termtext);border:1px solid var(--termline);padding:1rem 1.1rem;overflow-x:auto;line-height:1.55;box-shadow:0 12px 40px rgba(17,17,17,.12)}
 .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
-.navbrand{display:inline-flex;gap:9px;align-items:center;font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.18em}
+.navbrand{display:inline-flex;gap:9px;align-items:center;font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.16em;white-space:nowrap}
 nav.bar{display:flex;align-items:center;gap:22px;flex:1}
-nav.bar a{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:4px 2px;border-bottom:2px solid transparent}
+nav.bar a{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:5px 2px;border-bottom:2px solid transparent;white-space:nowrap}
 nav.bar a:hover{color:var(--text)}
 nav.bar a.on{color:var(--text);border-bottom-color:var(--red)}
 .navside{margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--faint);white-space:nowrap}
@@ -41,10 +48,10 @@ h1{font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin-b
 h2{font-size:20px;font-weight:700;letter-spacing:-.02em;margin:30px 0 10px}
 h3{font-size:15px;font-weight:600;margin:20px 0 6px}
 p.meta{color:var(--muted);font-size:13.5px}
-button,.btn{display:inline-flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:11px 20px;border:1px solid transparent;background:var(--text);color:#fff;cursor:pointer}
-button:hover,.btn:hover{background:var(--red)}
+button,.btn{display:inline-flex;gap:8px;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:11px 20px;border:1px solid var(--text);background:var(--text);color:#fff;cursor:pointer;transition:background-color .15s,color .15s,border-color .15s}
+button:hover,.btn:hover{background:var(--red);border-color:var(--red);color:#fff}
 button.ghost{background:transparent;color:var(--text);border-color:var(--line2)}
-button.ghost:hover{background:var(--wash);color:var(--text)}
+button.ghost:hover{background:var(--wash);color:var(--text);border-color:var(--text)}
 table{border-collapse:collapse;width:100%;font-size:13.5px}
 th{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line2)}
 td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -52,8 +59,8 @@ td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 .card.surface{background:var(--surface)}
 .termcard{background:var(--term);color:var(--termtext);border:1px solid var(--termline);font-family:var(--mono);font-size:.82rem;padding:16px 18px;box-shadow:0 12px 40px rgba(17,17,17,.18)}
 .termcard .tl{color:rgba(248,245,235,.5);font-size:10px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:8px}
-textarea,input[type=text],select{font:inherit;padding:9px 11px;border:1px solid var(--line2);background:var(--bg);width:100%}
-textarea:focus,input:focus{outline:none;border-color:var(--text)}
+textarea,input[type=text],select{font:inherit;padding:9px 11px;border:1px solid var(--line2);background:var(--bg);width:100%;color:var(--text)}
+textarea:focus,input:focus,select:focus{border-color:var(--red)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .field{display:block;margin:10px 0}
 .field span{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
@@ -64,10 +71,23 @@ textarea:focus,input:focus{outline:none;border-color:var(--text)}
 .mono{font-family:var(--mono)}
 .muted{color:var(--muted)}
 .red{color:var(--red)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:760px){
+ .navwrap{height:50px;padding:0 12px;gap:14px;overflow:hidden}
+ .navbrand{font-size:11px;letter-spacing:.1em}
+ nav.bar{gap:14px;min-width:0;overflow-x:auto;scrollbar-width:none}
+ nav.bar::-webkit-scrollbar{display:none}
+ nav.bar a{font-size:10px;letter-spacing:.06em}
+ .navside{display:none}
+ .wrap{padding-left:16px;padding-right:16px}
+}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
 `
 
 // xbNav renders the shared top navigation. active marks the current page key.
-// xbNav renders the persistent top menubar (fixed, backdrop blur): brand,
+// xbNav renders the persistent sticky top menubar: brand,
 // the six pages with the red active marker, and the actor on the right so
 // attribution context is always visible. Every page — including the chat
 // shell — renders it via xbPage or xbHeader.
@@ -82,13 +102,15 @@ func xbNav(active, actor string) string {
 		{"settings", "/settings", "Settings"},
 	}
 	out := `<header class="topnav"><div class="navwrap">`
-	out += `<span class="navbrand"><span class="pulse"></span>LEETOFFICE</span><nav class="bar">`
+	out += `<a class="navbrand" href="/" aria-label="LeetOffice home"><span class="pulse" aria-hidden="true"></span><span>LEETOFFICE</span></a><nav class="bar" aria-label="Primary">`
 	for _, item := range links {
 		cls := ""
+		current := ""
 		if item.key == active {
 			cls = ` class="on"`
+			current = ` aria-current="page"`
 		}
-		out += `<a href="` + item.path + `"` + cls + `>` + item.label + `</a>`
+		out += `<a href="` + item.path + `"` + cls + current + `>` + item.label + `</a>`
 	}
 	out += `</nav>`
 	out += `<span class="navside">`
@@ -109,5 +131,5 @@ func xbPageActor(title, active, body, actor string) string {
 	return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>` + title + ` — LeetOffice</title><style>` + xbCSS + `</style></head>
-<body>` + xbNav(active, actor) + `<div class="wrap" style="padding-top:26px">` + body + `</div></body></html>`
+<body><a class="skiplink" href="#main-content">Skip to main content</a>` + xbNav(active, actor) + `<div class="wrap" id="main-content" tabindex="-1" style="padding-top:26px">` + body + `</div></body></html>`
 }

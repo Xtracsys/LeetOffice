@@ -71,6 +71,9 @@ func ListenAndServe(ctx context.Context, cfgPath string) error {
 		d.mu.Unlock()
 		log.Printf("setup: no config at %s — first-run wizard on http://%s", cfgPath, addr)
 	}
+	if err := validateLocalHTTPAddr(addr); err != nil {
+		return err
+	}
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -109,6 +112,20 @@ func ListenAndServe(ctx context.Context, cfgPath string) error {
 func isLeetdBinary(path string) bool {
 	base := filepath.Base(path)
 	return base == "leetd" || base == "leetd.exe" || strings.HasPrefix(base, "leetd-")
+}
+
+// validateLocalHTTPAddr keeps the unauthenticated workspace UI and MCP
+// endpoint private to this machine. Remote sharing uses the authenticated
+// mTLS git transport; HTTP is intentionally loopback-only.
+func validateLocalHTTPAddr(addr string) error {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("invalid HTTP listen address %q: %w", addr, err)
+	}
+	if tcpAddr.IP == nil || !tcpAddr.IP.IsLoopback() {
+		return fmt.Errorf("HTTP listen address %q is not loopback; the UI and MCP HTTP endpoints have no authentication", addr)
+	}
+	return nil
 }
 
 func httpListenAddr(cfgPath string) string {
@@ -169,31 +186,24 @@ func CreateTeam(cfgPath, storeDir, actor string) (secret string, err error) {
 }
 
 // JoinTeam enrolls against a coordinator (D8) and writes the client config.
-func JoinTeam(cfgPath, storeDir, actor, coordinator, secret string) error {
+func JoinTeam(cfgPath, storeDir, actor, coordinator, secret, caFingerprint string) error {
 	cfg := config.Default(storeDir, actor)
 	_, identity := wizardPaths(storeDir)
 	cfg.IdentityDir = identity
-	id, info, err := leetNet.Enroll(coordinator, cfg.NodeID, secret, "")
+	id, info, err := leetNet.Enroll(coordinator, cfg.NodeID, secret, caFingerprint)
 	if err != nil {
 		return fmt.Errorf("enrollment rejected: %w", err)
+	}
+	// The share URL must point at the GIT service, not the enrollment port
+	// we just talked to. Refuse coordinators that do not advertise it;
+	// guessing a default port can silently attach a client to the wrong host.
+	if info.GitAddr == "" {
+		return fmt.Errorf("coordinator did not advertise a sync address; upgrade the coordinator and retry")
 	}
 	if err := id.Save(cfg.IdentityDir); err != nil {
 		return err
 	}
-	// The share URL must point at the GIT service, not the enrollment port
-	// we just talked to — the coordinator tells us where git lives, and we
-	// only fall back to the default port for older coordinators. GitPath
-	// is the real repo name (main.git, or main-share.git on a v0.1.0
-	// coordinator); empty means a pre-fix coordinator, so /main.git.
-	gitAddr := info.GitAddr
-	if gitAddr == "" {
-		host, _, splitErr := net.SplitHostPort(coordinator)
-		if splitErr != nil {
-			host = coordinator
-		}
-		gitAddr = net.JoinHostPort(host, fmt.Sprint(leetNet.DefaultPort))
-	}
-	cfg.MainShare = leetNet.ShareRemote(gitAddr, info.GitPath)
+	cfg.MainShare = leetNet.ShareRemote(info.GitAddr, info.GitPath)
 	return cfg.Save(cfgPath)
 }
 
@@ -242,7 +252,7 @@ func (d *Daemon) setupHandler() http.Handler {
 	})
 	mux.HandleFunc("/setup/peers", func(w http.ResponseWriter, r *http.Request) {
 		peers, err := leetNet.DiscoverPeers(1200 * time.Millisecond)
-		type row struct{ NodeID, Addr, Role string }
+		type row struct{ NodeID, Addr, Role, Fingerprint string }
 		out := []row{}
 		for _, p := range peers {
 			if p.Role == "coordinator" {
@@ -252,7 +262,7 @@ func (d *Daemon) setupHandler() http.Handler {
 						addr = net.JoinHostPort(host, fmt.Sprint(p.EnrollPort))
 					}
 				}
-				out = append(out, row{p.NodeID, addr, p.Role})
+				out = append(out, row{p.NodeID, addr, p.Role, p.Fingerprint})
 			}
 		}
 		if err != nil {
@@ -276,10 +286,11 @@ func (d *Daemon) setupAction(kind string) http.HandlerFunc {
 			return
 		}
 		var req struct {
-			Actor       string `json:"actor"`
-			Coordinator string `json:"coordinator"`
-			Secret      string `json:"secret"`
-			StoreDir    string `json:"store_dir"`
+			Actor         string `json:"actor"`
+			Coordinator   string `json:"coordinator"`
+			Secret        string `json:"secret"`
+			CAFingerprint string `json:"ca_fingerprint"`
+			StoreDir      string `json:"store_dir"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid request", http.StatusBadRequest)
@@ -294,8 +305,8 @@ func (d *Daemon) setupAction(kind string) http.HandlerFunc {
 		if storeDir == "" {
 			storeDir = DefaultStoreDir()
 		}
-		if kind == "join" && (req.Coordinator == "" || req.Secret == "") {
-			http.Error(w, "coordinator and enrollment secret are required", http.StatusBadRequest)
+		if kind == "join" && (req.Coordinator == "" || req.Secret == "" || req.CAFingerprint == "") {
+			http.Error(w, "coordinator, enrollment secret, and coordinator CA fingerprint are required", http.StatusBadRequest)
 			return
 		}
 
@@ -305,7 +316,7 @@ func (d *Daemon) setupAction(kind string) http.HandlerFunc {
 		case "start":
 			secret, err = CreateTeam(d.cfgPath, storeDir, actor)
 		case "join":
-			err = JoinTeam(d.cfgPath, storeDir, actor, req.Coordinator, req.Secret)
+			err = JoinTeam(d.cfgPath, storeDir, actor, req.Coordinator, req.Secret, req.CAFingerprint)
 		case "local":
 			err = CreateLocal(d.cfgPath, storeDir, actor)
 		default:
@@ -411,6 +422,8 @@ box-shadow:0 12px 40px rgba(17,17,17,.18)}
 <label>Your name</label><input name="actor" placeholder="maya" autocomplete="name">
 <label>Team coordinator</label><input name="coordinator" placeholder="host:port (discovered automatically when possible)" list="peers">
 <datalist id="peers"></datalist>
+<label>Coordinator CA fingerprint</label><input name="ca_fingerprint" placeholder="filled from LAN discovery or provided out of band" autocomplete="off">
+<p class="hint">Verify this fingerprint against the coordinator's Settings page using a trusted channel. LAN discovery can be spoofed.</p>
 <label>Invite code</label><input name="secret" placeholder="one-time code from your coordinator">
 <button type="submit">Join</button>
 <p class="err"></p>
@@ -431,14 +444,21 @@ document.querySelectorAll('.choice').forEach(c=>c.addEventListener('click',()=>{
  document.querySelectorAll('form').forEach(f=>f.classList.toggle('on',f.id==='f-'+c.dataset.form));
 }));
 // offer discovered coordinators while the user decides
+let discoveredPeers=[];
 fetch('/setup/peers').then(r=>r.json()).then(peers=>{
+ discoveredPeers=peers;
  const dl=document.getElementById('peers');
  peers.forEach(p=>{const o=document.createElement('option');o.value=p.Addr;o.label=p.NodeID;dl.appendChild(o);});
 }).catch(()=>{});
+const coordinatorInput=document.querySelector('#f-join [name=coordinator]');
+coordinatorInput.addEventListener('change',()=>{
+ const peer=discoveredPeers.find(p=>p.Addr===coordinatorInput.value);
+ if(peer) document.querySelector('#f-join [name=ca_fingerprint]').value=peer.Fingerprint;
+});
 document.querySelectorAll('form').forEach(f=>f.addEventListener('submit',async e=>{
  e.preventDefault();
  const fd=new FormData(e.target);
- const body={actor:fd.get('actor')||'',coordinator:fd.get('coordinator')||'',secret:fd.get('secret')||''};
+ const body={actor:fd.get('actor')||'',coordinator:fd.get('coordinator')||'',secret:fd.get('secret')||'',ca_fingerprint:fd.get('ca_fingerprint')||''};
  const err=f.querySelector('.err'); err.textContent='';
  try{
   const res=await fetch('/setup/'+f.id.slice(2),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});

@@ -7,18 +7,10 @@
 Chat, docs, tasks, and links in a single store — full audit, encrypted sync,
 zero cloud, zero egress.
 
-```sh
-# Pinned, checksum-verified install (never pipe `main` to a shell — see SECURITY note)
-LEET_VER=v1.0.0
-curl -fsSL "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/install.sh" -o /tmp/leetoffice-install.sh
-# Verify SHA256 before executing (replace with the published digest for the release)
-echo "<PUBLISH_RELEASE_SHA256>  /tmp/leetoffice-install.sh" | sha256sum -c -
-sh /tmp/leetoffice-install.sh
-```
-
-```sh
-brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb
-```
+**Install:** download your platform binary and the matching `checksums-*.txt`
+from [GitHub Releases](https://github.com/Xtracsys/LeetOffice/releases). Verify
+the binary against its entry in that checksum file before running it; see
+[Install](#install).
 
 [![CI](https://github.com/Xtracsys/LeetOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/Xtracsys/LeetOffice/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-red)](LICENSE)
@@ -55,52 +47,68 @@ leetd        # that's the whole install-and-run
 2. You land in a **team chat** (channels, presence, agents included) that's
    already alive with a welcome doc and starter channels
 3. **Docs / Memory / History / Agents / Settings** sit in a persistent menubar —
-   History is the full git audit trail; Settings holds your team invite code
-   and a **check for update** button (GitHub is contacted only when you click)
+   History is the full git audit trail; coordinators see the team invite code
+   and CA fingerprint in Settings for out-of-band verification, plus a **check
+   for update** button (GitHub is contacted only when you click)
 4. Click **make always-on** and it survives reboots. Done.
 
-Agents join through MCP (`leetd mcp-install` prints the config; the Agents
-page has a copy button):
+Connect an agent through MCP (`leetd mcp-install` prints the config; the Agents
+page has a copy button). First create a local identity in **Settings → Agent
+access** and grant only the tools it needs. No tools are granted by default.
+Credentials and grants stay on this node, outside the synchronized store. The
+available tool scopes are `search`, `read_doc`, `write_doc`, `create_task`,
+`link`, `audit_query`, `diff`, `list_channels`, `send_message`, `subscribe`,
+`inbox`, and `mark_read`.
 
 ```json
-{ "mcpServers": { "leetoffice": {
-    "command": "leetd", "args": ["mcp", "--actor", "agent:hermes"] } } }
+{
+  "mcpServers": {
+    "leetoffice": {
+      "command": "leetd",
+      "args": ["mcp"],
+      "env": { "LEETOFFICE_AGENT_TOKEN": "PASTE_ONE_TIME_TOKEN" }
+    }
+  }
+}
 ```
 
-Now `send_message`, `create_task`, `read_doc`, `search`, … — twelve tools, every
-write attributed to the agent, merge-safe against human edits. Agents
-`subscribe` to channels and poll `inbox` for `@agent:<id>` mentions (human-only
-traffic stays quiet). `mark_read` keeps the cursor in `node.json`.
+Replace the obvious placeholder with the one-time credential shown when you
+create it, and keep the MCP client configuration private. `leetd mcp` reads
+`LEETOFFICE_AGENT_TOKEN`; the server derives the immutable `agent:<id>` identity
+from that credential, not a caller-supplied actor or name. Only the granted
+tools are available. Writes are attributed to that identity in the git audit
+trail. Agents can `subscribe` and poll `inbox` for `@agent:<id>` mentions;
+`mark_read` keeps the cursor in `node.json`.
+
+`leetd mcp-install --client claude --write` creates/replaces `.mcp.json` with
+mode `0600` via a same-directory temporary file, and refuses an existing
+symlink or non-regular destination. Run it in a trusted project directory.
+Never commit a real one-time token.
 
 ## Install
 
-**macOS / Linux (pinned, checksum-verified):**
+**GitHub Releases (all platforms):**
 
-```sh
-LEET_VER=v1.0.0
-curl -fsSL "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/install.sh" -o /tmp/leetoffice-install.sh
-echo "<PUBLISH_RELEASE_SHA256>  /tmp/leetoffice-install.sh" | sha256sum -c -
-sh /tmp/leetoffice-install.sh
-```
+1. Open [releases](https://github.com/Xtracsys/LeetOffice/releases).
+2. Download your platform binary and the `checksums-*.txt` file from the same
+   release.
+3. Verify the selected binary against its matching filename entry in the
+   checksum file using your platform's SHA-256 utility before running it.
+4. On macOS/Linux, make the binary executable and place it on your `PATH`;
+   Windows users can run the `.exe` directly.
 
-**Homebrew** (macOS / Linux, no tap yet):
-
-```sh
-brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb
-```
-
-**Any platform, no script:** grab a binary from
-[releases](https://github.com/Xtracsys/LeetOffice/releases) —
-darwin/arm64 · darwin/amd64 · linux/amd64 · linux/arm64 · windows/amd64 —
-verify with `shasum -a 256 -c checksums-*.txt`, run it. Static, ~13 MB,
-zero dependencies (pure Go, no cgo).
+Available targets: darwin/arm64 · darwin/amd64 · linux/amd64 · linux/arm64 ·
+windows/amd64. Pure Go, built without cgo, with no system runtime dependency.
 
 **From source:** `go build -o leetd ./cmd/leetd`
 
-**Second machine:** run LeetOffice there → *Join a team* → your coordinator
-is auto-discovered on the LAN → paste the invite code from Settings.
-Enrollment issues that machine an mTLS certificate; everything after that is
-encrypted sync with automatic offline catch-up.
+**Second machine:** run LeetOffice there → *Join a team* → select the
+auto-discovered coordinator. Before entering the invite code, independently
+compare its displayed SHA-256 CA fingerprint with the value received from the
+coordinator through a trusted out-of-band channel; do not trust LAN discovery
+alone. Only after the fingerprints match, enter the invite code. Enrollment
+issues that machine an mTLS certificate; everything after that is encrypted
+sync with automatic offline catch-up.
 
 ## What makes it different
 
@@ -128,7 +136,7 @@ Memory synthesis, daily digests, hygiene checks, and memory-boosted search
 
 ```sh
 leetd check          # store self-test
-go test ./...        # full suite (14 packages, race-clean)
+go test ./...        # full suite
 ```
 
 ## What it isn't (yet)
@@ -166,8 +174,10 @@ are read by tools that blindly follow `llms.txt` / README instructions. Therefor
   are the exact vector behind the 2026-08 `llms.txt` supply-chain attacks (Ars
   Technica: *Claude, Codex, and Hermes installed unowned code inside corporate
   networks*).
-- Install commands MUST pin a **tagged release** and verify a **published SHA256**
-  before `sh` executes (see the Install block above).
+- Publish a one-line installer only when the release workflow attaches a
+  versioned copy of the script and publishes its SHA-256 digest. Until then,
+  direct users to release binaries and the matching checksum manifest; do not
+  claim a pinned installer that is not a published asset.
 - Any package/domain referenced in docs must be **owned and registered** by
   Xtracsys before shipping. If a name is unclaimed, that is a security bug, not a
   TODO.

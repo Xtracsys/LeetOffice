@@ -150,6 +150,16 @@ func TestChatShellAndAPI(t *testing.T) {
 		!strings.Contains(page, "/api/state") {
 		t.Fatalf("chat shell wrong:\n%.300s", page)
 	}
+	for _, marker := range []string{
+		`href="#main-content"`, `aria-label="Primary"`, `aria-label="Messages"`,
+		`data-state="loading"`, `Git sync not reported here.`, `prefers-reduced-motion:reduce`,
+		`:focus-visible`, `No channels yet. Create one to start.`, `Connection lost`,
+		`Can’t reach this node`, `New messages ↓`, `Your draft is still here`,
+	} {
+		if !strings.Contains(page, marker) {
+			t.Errorf("chat shell missing UI/accessibility marker %q", marker)
+		}
+	}
 
 	// send via the API exactly as the composer does
 	res, err := h.Client().Post(h.URL+"/api/send", "application/json",

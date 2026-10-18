@@ -152,7 +152,7 @@ func TestJoinTeamEnrollsAndConfigures(t *testing.T) {
 
 	cfgPath := filepath.Join(dir, "node.json")
 	storeDir := filepath.Join(dir, "client-store")
-	if err := JoinTeam(cfgPath, storeDir, "human:maya", enr.Addr().String(), "one-time-secret"); err != nil {
+	if err := JoinTeam(cfgPath, storeDir, "human:maya", enr.Addr().String(), "one-time-secret", ca.Fingerprint()); err != nil {
 		t.Fatalf("JoinTeam: %v", err)
 	}
 	cfg, err := config.Load(cfgPath)
@@ -173,7 +173,7 @@ func TestJoinTeamEnrollsAndConfigures(t *testing.T) {
 	// wrong secret is rejected with a clear error
 	bad := filepath.Join(dir, "bad.json")
 	if err := JoinTeam(bad, filepath.Join(dir, "bad-store"), "human:eve",
-		enr.Addr().String(), "wrong"); err == nil {
+		enr.Addr().String(), "wrong", ca.Fingerprint()); err == nil {
 		t.Fatal("wrong secret accepted")
 	}
 }
@@ -209,8 +209,12 @@ func TestInviteRegenLiveEnroll(t *testing.T) {
 		t.Fatal("coordinator started without enrollment server")
 	}
 	enrollAddr := n.enroll.Addr().String()
+	ca, err := leetNet.OpenCA(filepath.Join(cfg.IdentityDir, "ca"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	if _, _, err := leetNet.Enroll(enrollAddr, "node-old", oldSecret, ""); err != nil {
+	if _, _, err := leetNet.Enroll(enrollAddr, "node-old", oldSecret, ca.Fingerprint()); err != nil {
 		t.Fatalf("enroll with original secret: %v", err)
 	}
 
@@ -229,10 +233,10 @@ func TestInviteRegenLiveEnroll(t *testing.T) {
 	if newSecret == "" || newSecret == oldSecret {
 		t.Fatalf("secret not rotated in config: %q → %q", oldSecret, newSecret)
 	}
-	if _, _, err := leetNet.Enroll(enrollAddr, "node-stale", oldSecret, ""); err == nil {
+	if _, _, err := leetNet.Enroll(enrollAddr, "node-stale", oldSecret, ca.Fingerprint()); err == nil {
 		t.Fatal("old secret still accepted after regen")
 	}
-	if _, _, err := leetNet.Enroll(enrollAddr, "node-new", newSecret, ""); err != nil {
+	if _, _, err := leetNet.Enroll(enrollAddr, "node-new", newSecret, ca.Fingerprint()); err != nil {
 		t.Fatalf("enroll with rotated secret (no restart): %v", err)
 	}
 }
@@ -361,7 +365,7 @@ func TestWizardCreatedTeamJoinSyncs(t *testing.T) {
 
 	clientCfg := filepath.Join(dir, "joiner.json")
 	clientStore := filepath.Join(dir, "joiner", "LeetOffice")
-	if err := JoinTeam(clientCfg, clientStore, "human:maya", enr.Addr().String(), secret); err != nil {
+	if err := JoinTeam(clientCfg, clientStore, "human:maya", enr.Addr().String(), secret, ca.Fingerprint()); err != nil {
 		t.Fatalf("JoinTeam: %v", err)
 	}
 	joined, err := config.Load(clientCfg)

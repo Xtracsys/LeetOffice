@@ -324,8 +324,13 @@ func (id *Identity) ServerTLSConfig() *tls.Config {
 // presents its certificate but does not require a client certificate —
 // joining nodes have none yet, the one-time secret is the gate (§6.3).
 func (id *Identity) EnrollmentTLSConfig() *tls.Config {
+	leaf := id.leaf
+	// Enrollment clients have not received ca.crt yet. Send it in the TLS
+	// certificate chain so they can verify the advertised CA fingerprint
+	// during the handshake, before transmitting the invite secret.
+	leaf.Certificate = [][]byte{id.cert.Raw, id.ca.Raw}
 	return &tls.Config{
-		Certificates: []tls.Certificate{id.leaf},
+		Certificates: []tls.Certificate{leaf},
 		ClientAuth:   tls.NoClientCert,
 		ClientCAs:    id.pool,
 		MinVersion:   tls.VersionTLS13,

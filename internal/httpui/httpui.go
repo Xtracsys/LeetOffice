@@ -5,6 +5,7 @@
 package httpui
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"leetoffice/internal/agentaccess"
 	"leetoffice/internal/config"
 	"leetoffice/internal/store"
 	leetSync "leetoffice/internal/sync"
@@ -24,6 +26,7 @@ type UI struct {
 	Store  *store.Store
 	Repo   *leetSync.Repo
 	Config *config.Config
+	Access *agentaccess.Manager
 	// BinaryPath/CfgPath fill in the agent-connection snippet with real
 	// locations (daemon sets them; tests can stub).
 	BinaryPath string
@@ -61,7 +64,7 @@ func (u *UI) Handler() http.Handler {
 	mux.HandleFunc("/agents", u.handleAgents)
 	mux.HandleFunc("/api/state", u.handleAPIState)
 	mux.HandleFunc("/api/send", u.handleAPISend)
-	mux.HandleFunc("/api/agent/inbox", u.handleAgentInbox)
+	mux.HandleFunc("/api/agent/inbox", u.handleAuthenticatedAgentInbox)
 	mux.HandleFunc("/audit", u.handleAudit)
 	mux.HandleFunc("/settings", u.handleSettings)
 	mux.HandleFunc("/settings/invite", u.handleInviteRegen)
@@ -69,6 +72,8 @@ func (u *UI) Handler() http.Handler {
 	mux.HandleFunc("/settings/update/apply", u.handleUpdateApply)
 	mux.HandleFunc("/settings/hide", u.handleHideActor)
 	mux.HandleFunc("/settings/unhide", u.handleUnhideActor)
+	mux.HandleFunc("/settings/agents", u.handleAgentAccess)
+	mux.HandleFunc("/settings/agents/", u.handleAgentAccess)
 	return mux
 }
 
@@ -279,23 +284,26 @@ func (u *UI) handleAgents(w http.ResponseWriter, r *http.Request) {
 	if bin == "" {
 		bin = "leetd"
 	}
-	cfgFlag := ""
+	mcpArgs := []string{"mcp"}
 	if u.CfgPath != "" {
-		cfgFlag = `","--config","` + u.CfgPath
+		mcpArgs = append(mcpArgs, "--config", u.CfgPath)
 	}
-	snippet := fmt.Sprintf(`{
-  "mcpServers": {
-    "leetoffice": {
-      "command": %q,
-      "args": ["mcp%s", "--actor", "agent:NAME-YOUR-AGENT"]
-    }
-  }
-}`, bin, cfgFlag)
+	snippetData, _ := json.MarshalIndent(map[string]any{
+		"mcpServers": map[string]any{
+			"leetoffice": map[string]any{
+				"command": bin,
+				"args":    mcpArgs,
+				"env":     map[string]string{"LEETOFFICE_AGENT_TOKEN": "PASTE_ONE_TIME_TOKEN"},
+			},
+		},
+	}, "", "  ")
+	snippet := string(snippetData)
 
 	var b strings.Builder
 	b.WriteString(`<div class="eyebrow"><span class="pulse"></span>FILE / AGENTS · MCP ACCESS</div>`)
 	b.WriteString("<h1>Connect an agent</h1>")
-	b.WriteString("<p class=meta>Any MCP-capable client — Claude Code, Codex, Hermes, Cursor — can work in this store. Every write is attributed to the actor you name here.</p>")
+	b.WriteString("<p class=meta>Agent identity and write attribution are bound to the issued credential, not a caller-supplied actor or display name. Credentials and grants are local to this node.</p>")
+	b.WriteString(`<div class="card"><h3 style="margin-top:0">Agent identities &amp; access</h3><p class="meta">Create and manage immutable identities, rotate or revoke credentials, and grant only the MCP tools each agent needs.</p><p><a class="btn ghost" href="/settings/agents">manage agent access</a></p></div>`)
 
 	b.WriteString(`<div class="card"><h3 style="margin-top:0">Stdio (Claude Code, Codex, most clients)</h3>`)
 	b.WriteString(`<p>Add this to your client's MCP configuration (<code>claude mcp add</code>, <code>.mcp.json</code>, or your client's settings):</p>`)
@@ -304,13 +312,13 @@ func (u *UI) handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	b.WriteString(`</div><div class="card"><h3 style="margin-top:0">Inbox</h3>
 <p class="meta">Agents call <code>subscribe</code> then poll <code>inbox</code> for <code>@agent:&lt;id&gt;</code> mentions. Unaddressed chat is not delivered. <code>mark_read</code> stores the cursor in this node's config.</p>`)
-	fmt.Fprintf(&b, `<p class="meta">HTTP: <code>GET http://%s/api/agent/inbox?actor=agent:hermes</code></p>`, html.EscapeString(u.Config.Listen.HTTP))
+	fmt.Fprintf(&b, `<p class="meta">HTTP inbox: <code>GET http://%s/api/agent/inbox</code> with <code>Authorization: Bearer &lt;token&gt;</code>; the identity is derived from that credential.</p>`, html.EscapeString(u.Config.Listen.HTTP))
 
 	b.WriteString(`</div><div class="card"><h3 style="margin-top:0">HTTP</h3>`)
-	fmt.Fprintf(&b, "<p>Point an MCP HTTP client at <code>http://%s/mcp</code>.</p>", u.Config.Listen.HTTP)
+	fmt.Fprintf(&b, "<p>Point an MCP HTTP client at <code>http://%s/mcp</code> and send <code>Authorization: Bearer &lt;token&gt;</code>.</p>", html.EscapeString(u.Config.Listen.HTTP))
 
 	b.WriteString(`</div><div class="card"><h3 style="margin-top:0">CLI (no MCP)</h3>`)
-	b.WriteString("<p>Agents or scripts can also drive the store directly: <code>leetd doc</code>, <code>leetd audit</code>, and the store-backed MCP via <code>leetd mcp</code>.</p></div>")
+	b.WriteString("<p>Agents or scripts can also drive the store directly: <code>leetd doc</code>, <code>leetd audit</code>, or authenticated MCP via <code>leetd mcp</code> with <code>LEETOFFICE_AGENT_TOKEN</code>.</p></div>")
 
 	_, _ = w.Write([]byte(xbPageActor("Agents", "agents", b.String(), u.Config.Actor)))
 }
