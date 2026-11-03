@@ -202,7 +202,10 @@ func TestInviteRegenLiveEnroll(t *testing.T) {
 	n.cfgPath = cfgPath
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := n.StartLoops(ctx); err != nil {
+	// This test covers live enrollment-secret rotation only. Starting the full
+	// background loop set also launches digest/sync writes into t.TempDir;
+	// cancellation does not wait for those unrelated writers before test cleanup.
+	if err := n.StartNetworking(ctx); err != nil {
 		t.Fatalf("StartLoops: %v", err)
 	}
 	if n.enroll == nil {
