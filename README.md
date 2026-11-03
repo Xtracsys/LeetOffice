@@ -19,6 +19,8 @@ the binary against its entry in that checksum file before running it; see
 
 </div>
 
+LeetOffice makes human and AI collaboration explicit: each agent has its own identity and selected tool grants, and its changes remain attributable in the Git history you own. [Read the Xtracsys orchestration playbook](https://github.com/Xtracsys/Xtracsys/blob/main/docs/ORCHESTRATION_GUIDE.md) for the planning and review workflow behind this project.
+
 ---
 
 ## Why
