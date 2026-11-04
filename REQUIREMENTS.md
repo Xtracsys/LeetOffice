@@ -2,7 +2,7 @@
 
 > **Working title:** LeetOffice
 > **Status:** Requirements in progress (living document)
-> **Project folder:** `/Volumes/XSdrive/Projects/leetoffice`
+> **Source repository:** https://github.com/Xtracsys/LeetOffice
 > **Last updated:** 2026-08-15
 
 ## 1. Purpose & Vision
