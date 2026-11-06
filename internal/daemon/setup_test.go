@@ -201,7 +201,13 @@ func TestInviteRegenLiveEnroll(t *testing.T) {
 	}
 	n.cfgPath = cfgPath
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Drain the loops BEFORE TempDir cleanup: the jobs goroutine commits
+	// the daily digest, and a write racing RemoveAll made cleanup fail
+	// with "directory not empty" (flaky across parallel test packages).
+	t.Cleanup(func() {
+		cancel()
+		n.WaitLoops()
+	})
 	if err := n.StartLoops(ctx); err != nil {
 		t.Fatalf("StartLoops: %v", err)
 	}
@@ -247,6 +253,7 @@ func TestSetupWizardFlow(t *testing.T) {
 	d.handler = d.setupHandler()
 	d.mu.Unlock()
 	h := httptest.NewServer(d)
+	t.Cleanup(d.stopNode) // wizard-created nodes run real loops — drain them
 	defer h.Close()
 
 	// the wizard page renders
@@ -255,8 +262,11 @@ func TestSetupWizardFlow(t *testing.T) {
 		t.Fatalf("wizard page wrong:\n%.300s", page)
 	}
 
-	// complete setup: local-only team
-	body := post(t, h, "/setup/local", `{"actor":"josh"}`)
+	// complete setup: local-only team. store_dir is passed explicitly —
+	// leaving it empty makes the wizard use DefaultStoreDir(), i.e. the
+	// REAL ~/LeetOffice store: this test used to open it, add a git
+	// remote, and commit digest files into the operator's workspace.
+	body := post(t, h, "/setup/local", `{"actor":"josh","store_dir":"`+filepath.Join(dir, "store")+`"}`)
 	if body["ok"] != true || body["redirect"] != "/" {
 		t.Fatalf("setup response: %#v", body)
 	}
@@ -287,14 +297,15 @@ func TestSetupWizardFlow(t *testing.T) {
 		t.Fatalf("welcome doc missing: %.300s", docs)
 	}
 
-	// coordinator path through the wizard too
+	// coordinator path through the wizard too (same store_dir rule)
 	d2 := &Daemon{cfgPath: filepath.Join(dir, "n2.json"), ctx: context.Background()}
 	d2.mu.Lock()
 	d2.handler = d2.setupHandler()
 	d2.mu.Unlock()
 	h2 := httptest.NewServer(d2)
+	t.Cleanup(d2.stopNode)
 	defer h2.Close()
-	res := post(t, h2, "/setup/start", `{"actor":"maya"}`)
+	res := post(t, h2, "/setup/start", `{"actor":"maya","store_dir":"`+filepath.Join(dir, "n2-store")+`"}`)
 	if res["ok"] != true || res["enrollment_secret"] == "" {
 		t.Fatalf("start-team response: %#v", res)
 	}

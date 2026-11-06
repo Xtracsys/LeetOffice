@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -237,7 +238,15 @@ func (id *Identity) NodeID() string {
 func (id *Identity) Fingerprint() string { return Fingerprint(id.cert) }
 
 // Save persists the identity under dir (node.key, node.crt, ca.crt).
+// When the dir already holds an identity, it is first copied aside
+// (dir.bak-<timestamp>) so re-enrolling can never destroy the previous
+// membership unrecoverably (FR-017); the newest identityBackupsKeep backups
+// are retained. If the backup cannot be made, Save fails — an identity is
+// never overwritten un-preserved.
 func (id *Identity) Save(dir string) error {
+	if err := backupIdentityBeforeSave(dir); err != nil {
+		return fmt.Errorf("backing up existing identity before overwrite: %w", err)
+	}
 	keyDER, err := x509.MarshalPKCS8PrivateKey(id.priv)
 	if err != nil {
 		return err
@@ -255,6 +264,35 @@ func (id *Identity) Save(dir string) error {
 	}
 	return os.WriteFile(filepath.Join(dir, caCertFile), pem.EncodeToMemory(
 		&pem.Block{Type: "CERTIFICATE", Bytes: id.ca.Raw}), 0o644)
+}
+
+// identityBackupsKeep is how many timestamped identity backups survive.
+const identityBackupsKeep = 3
+
+// backupIdentityBeforeSave copies dir (whole tree — a coordinator's dir also
+// holds ca/ and issued/) to a sibling dir.bak-<stamp> when it already
+// contains a node identity, then prunes the oldest backups. No-op when there
+// is nothing to preserve.
+func backupIdentityBeforeSave(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, nodeKey)); err != nil {
+		return nil // fresh create — nothing to back up
+	}
+	bak := dir + ".bak-" + time.Now().Format("20060102-150405.000000000")
+	if err := os.CopyFS(bak, os.DirFS(dir)); err != nil {
+		return err
+	}
+	// Prune: keep the newest identityBackupsKeep (stamp sorts lexically).
+	matches, err := filepath.Glob(dir + ".bak-*")
+	if err != nil {
+		return err
+	}
+	sort.Strings(matches)
+	for i := 0; i < len(matches)-identityBackupsKeep; i++ {
+		if err := os.RemoveAll(matches[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // LoadIdentity reloads an identity previously written by Save.

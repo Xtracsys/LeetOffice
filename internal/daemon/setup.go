@@ -22,6 +22,7 @@ import (
 	"leetoffice/internal/chat"
 	"leetoffice/internal/config"
 	"leetoffice/internal/hostsign"
+	"leetoffice/internal/httpui"
 	leetNet "leetoffice/internal/net"
 	"leetoffice/internal/store"
 )
@@ -34,6 +35,8 @@ type Daemon struct {
 
 	mu      sync.Mutex
 	handler http.Handler
+	node    *Node              // live node after a wizard action (stopNode drains it)
+	cancel  context.CancelFunc // cancels the loops started by becomeNode
 }
 
 // ListenAndServe is the daemon entrypoint. Missing config is not an error —
@@ -95,12 +98,15 @@ func ListenAndServe(ctx context.Context, cfgPath string) error {
 	select {
 	case err := <-serveErr:
 		if err != nil && err != http.ErrServerClosed {
+			d.stopNode()
 			return fmt.Errorf("http: %w", err)
 		}
+		d.stopNode()
 		return nil
 	case <-stop:
 	case <-ctx.Done():
 	}
+	d.stopNode()
 	shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	return httpSrv.Shutdown(shutCtx)
@@ -111,7 +117,10 @@ func isLeetdBinary(path string) bool {
 	return base == "leetd" || base == "leetd.exe" || strings.HasPrefix(base, "leetd-")
 }
 
-func httpListenAddr(cfgPath string) string {
+// HTTPListenAddr reports the HTTP address a node at cfgPath will bind (the
+// configured listener, or the loopback default). Exported so the CLI banner
+// prints the truth instead of a hardcoded port.
+func HTTPListenAddr(cfgPath string) string {
 	addr := config.Default("", "").Listen.HTTP
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
@@ -123,17 +132,41 @@ func httpListenAddr(cfgPath string) string {
 	return addr
 }
 
-// becomeNode swaps the daemon's handler to the live node and starts its loops.
+func httpListenAddr(cfgPath string) string {
+	return HTTPListenAddr(cfgPath)
+}
+
+// becomeNode swaps the daemon's handler to the live node and starts its loops
+// under a daemon-owned cancellable context (see stopNode).
 func (d *Daemon) becomeNode(ctx context.Context, node *Node) error {
-	if err := node.StartLoops(ctx); err != nil {
+	loopCtx, cancel := context.WithCancel(ctx)
+	d.mu.Lock()
+	d.cancel = cancel
+	if err := node.StartLoops(loopCtx); err != nil {
 		// Git/enroll bind can fail when a leftover leetd still holds
 		// 7666/7443; the UI must still come up so the operator can act.
 		log.Printf("node loops: %v (continuing in degraded mode)", err)
 	}
-	d.mu.Lock()
 	d.handler = node.ServeHTTP()
+	d.node = node
 	d.mu.Unlock()
 	return nil
+}
+
+// stopNode cancels the loops started by becomeNode and drains them. On the
+// process path ListenAndServe calls it so nothing outlives the HTTP server;
+// tests call it so background digest/sync goroutines cannot race TempDir
+// cleanup.
+func (d *Daemon) stopNode() {
+	d.mu.Lock()
+	cancel, node := d.cancel, d.node
+	d.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if node != nil {
+		node.WaitLoops()
+	}
 }
 
 func (d *Daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -264,7 +297,7 @@ func (d *Daemon) setupHandler() http.Handler {
 	mux.HandleFunc("/setup/start", d.setupAction("start"))
 	mux.HandleFunc("/setup/join", d.setupAction("join"))
 	mux.HandleFunc("/setup/local", d.setupAction("local"))
-	return mux
+	return httpui.GuardMutations(mux)
 }
 
 // setupAction runs one wizard action and, on success, swaps this daemon into

@@ -1,8 +1,13 @@
 #!/bin/sh
-# LeetOffice one-line installer.
+# LeetOffice installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh
+#   LEET_VER=v0.1.8
+#   curl -fsSL "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/install.sh" -o /tmp/leetoffice-install.sh
+#   echo "<PUBLISH_RELEASE_SHA256>  /tmp/leetoffice-install.sh" | shasum -a 256 -c -
+#   sh /tmp/leetoffice-install.sh
 #
+# Never pipe this script from `main` straight into a shell — the README's
+# supply-chain guard forbids publishing that pattern.
 # (or from a checkout: sh install.sh [--version vX.Y.Z])
 # Downloads the right static binary for this OS/arch, verifies its checksum,
 # installs to ~/.local/bin (or a prefix you choose), and prints next steps.

@@ -10,6 +10,12 @@ import (
 
 // typeDir maps a doc type to its on-disk folder (BUILD_SPEC §4.1).
 func typeDir(t DocType) string {
+	return DirForType(t)
+}
+
+// DirForType is the exported form of typeDir: the folder a doc type lives
+// in on disk ("tasks", "contacts", …; unknown types land in "docs").
+func DirForType(t DocType) string {
 	switch t {
 	case TypeTask:
 		return "tasks"
@@ -50,7 +56,22 @@ func OpenStore(path string) (*Store, error) {
 
 // Path returns the HTML file path for a doc slug/type.
 func (s *Store) Path(t DocType, slug string) string {
-	return filepath.Join(s.Root, typeDir(t), slug+".html")
+	return filepath.Join(s.Root, typeDir(t), safeSlug(slug)+".html")
+}
+
+// safeSlug pins a slug to a plain file name. Slugs arrive from peers
+// (merged sync payloads) and MCP arguments alike; a slug containing a
+// path separator would otherwise write or read outside its type
+// directory. Path traversal needs a separator, so replacing those (and
+// NUL) is sufficient — ".." alone is an inert file name once joined with
+// the ".html" suffix.
+func safeSlug(slug string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '/' || r == '\\' || r == 0 || r == filepath.Separator {
+			return '-'
+		}
+		return r
+	}, slug)
 }
 
 // Save renders the doc to its HTML file and refreshes INDEX.md. Audit

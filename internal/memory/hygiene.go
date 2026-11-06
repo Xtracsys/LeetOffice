@@ -78,7 +78,11 @@ func blockIDOfLink(d *store.Doc, linkID string) string {
 // not parse (missing dirs are skipped).
 func unindexedFiles(s *store.Store) []Issue {
 	var issues []Issue
-	for _, dir := range []string{"docs", "tasks", "contacts", "channels", "companies", "emails", "memory"} {
+	// The store's own type dirs (same mapping OpenStore creates), so a new
+	// doc type is scanned without editing this list.
+	for _, t := range []store.DocType{store.TypeDoc, store.TypeTask, store.TypeContact,
+		store.TypeChannel, store.TypeCompany, store.TypeEmail, store.TypeMemory} {
+		dir := store.DirForType(t)
 		entries, err := os.ReadDir(filepath.Join(s.Root, dir))
 		if err != nil {
 			continue // missing dir is fine

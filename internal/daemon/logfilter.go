@@ -7,6 +7,7 @@ package daemon
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -27,8 +28,13 @@ var benignSnippets = [][]byte{
 func (n noiseFilter) Write(p []byte) (int, error) {
 	for _, snip := range benignSnippets {
 		if bytes.Contains(p, snip) {
+			// Write the notice straight to the underlying writer, NOT via
+			// log.Print: this Write runs inside the logger's own mutex
+			// (log.Logger.output holds it while calling its writer), so
+			// logging here re-enters that mutex and deadlocks the first
+			// benign mdns line ever seen.
 			quietOnce.Do(func() {
-				log.Print("net: IPv6 multicast unavailable on this machine — mDNS continues over IPv4 (harmless)")
+				fmt.Fprintf(n.w, "net: IPv6 multicast unavailable on this machine — mDNS continues over IPv4 (harmless)\n")
 			})
 			return len(p), nil // swallow the repeat
 		}

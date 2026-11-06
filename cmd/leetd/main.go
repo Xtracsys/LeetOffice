@@ -5,8 +5,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -95,8 +97,9 @@ usage:
   leetd serve [--config FILE]                                          run the daemon
   leetd sync   [--config FILE]                                         one sync cycle
   leetd mcp    [--config FILE] [--actor ID]                            MCP over stdio (agent clients)
-  leetd enroll [--config FILE] --coordinator HOST:PORT --secret S      join a team (D8)
-  leetd doc    add|edit|show|list ...                                  human store ops
+  leetd enroll [--config FILE] [--store DIR] --coordinator HOST:PORT    join a team (D8)
+               (--secret S | --secret-env NAME | --secret-stdin)
+  leetd doc    show|list ...                                           human store ops (add/edit via UI or MCP)
   leetd audit  [--config FILE] [--doc SLUG] [--actor ID]               what changed, by whom
   leetd memory [--config FILE]                                         synthesize MEMORY.md now
   leetd digest [--config FILE]                                         write today's digest
@@ -127,6 +130,8 @@ func loadConfig(args []string) (*config.Config, string) {
 
 func cmdInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	cfgPath := fs.String("config", config.DefaultPath(), "config file to write")
+	force := fs.Bool("force", false, "overwrite an existing config (default: refuse)")
 	storeDir := fs.String("store", config.DefaultStoreDir(), "store directory")
 	actor := fs.String("actor", "", "actor id, e.g. human:josh")
 	coordinator := fs.Bool("coordinator", false, "make this node the coordinator")
@@ -134,12 +139,18 @@ func cmdInit(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	// An existing config IS the node's team membership (main share, identity
+	// dir, subscription cursors). Re-running init used to silently replace
+	// it — the CLI twin of a bug the wizard test once had. Refuse unless
+	// --force; never silently overwrite (project ground rule 2).
+	if _, err := os.Stat(*cfgPath); err == nil && !*force {
+		return fmt.Errorf("config %s already exists — re-running init would discard team membership; use --force to overwrite or --config FILE for a different node", *cfgPath)
+	}
 	if *actor == "" {
 		host, _ := os.Hostname()
 		*actor = "human:" + host
 	}
 	cfg := config.Default(*storeDir, *actor)
-	cfgPath := config.DefaultPath()
 
 	if *coordinator {
 		cfg.Role = "coordinator"
@@ -156,14 +167,14 @@ func cmdInit(args []string) error {
 		cfg.MainShare = *share
 	}
 
-	if err := cfg.Save(cfgPath); err != nil {
+	if err := cfg.Save(*cfgPath); err != nil {
 		return err
 	}
 	if _, err := daemon.Start(cfg); err != nil {
 		return err
 	}
 	fmt.Printf("node initialized: %s\n  config: %s\n  store:  %s\n  role:   %s\n  share:  %s\n",
-		cfg.NodeID, cfgPath, cfg.StoreDir, cfg.Role, or(cfg.MainShare, "(none)"))
+		cfg.NodeID, *cfgPath, cfg.StoreDir, cfg.Role, or(cfg.MainShare, "(none)"))
 	return nil
 }
 
@@ -183,7 +194,9 @@ func cmdServe(args []string) error {
 	if _, err := os.Stat(*cfgPath); err != nil {
 		fmt.Println("no configuration yet — first-run wizard:")
 	}
-	fmt.Println("leetd: UI on http://127.0.0.1:7667 (Ctrl+C to stop)")
+	// Print the address this node will actually bind (the banner used to
+	// hardcode 7667 and lie on any non-default config).
+	fmt.Printf("leetd: UI on http://%s (Ctrl+C to stop)\n", daemon.HTTPListenAddr(*cfgPath))
 	return daemon.ListenAndServe(context.Background(), *cfgPath)
 }
 
@@ -290,10 +303,10 @@ func cmdAudit(args []string) error {
 		if err != nil {
 			return err
 		}
-		path = "docs/" + d.Slug + ".html"
-		if d.Type == store.TypeTask {
-			path = "tasks/" + d.Slug + ".html"
-		}
+		// Filter by the doc's real on-disk folder — hardcoding docs/ and
+		// tasks/ silently returned nothing for contacts/channels/companies/
+		// emails/memory docs.
+		path = store.DirForType(d.Type) + "/" + d.Slug + ".html"
 	}
 	entries, err := node.Repo.AuditLog(path, time.Time{}, *actor, 30)
 	if err != nil {
@@ -305,7 +318,10 @@ func cmdAudit(args []string) error {
 	return nil
 }
 
-// runCheck is the Phase 1 store self-test (write → parse → render → rewrite).
+// runCheck is the store self-test: a synthetic write→parse→render→rewrite
+// round-trip, plus — when a real store exists — opening it and listing every
+// doc (the command's documented purpose; it used to only exercise the
+// in-memory round-trip and never touch the store).
 func runCheck() error {
 	d := store.NewDoc(store.TypeDoc, "imaging-runbook", "Site Imaging Runbook")
 	d.AddParagraph("Boot the target from the Ventoy USB.")
@@ -328,23 +344,120 @@ func runCheck() error {
 	if reparsed.ID != d.ID || len(reparsed.Blocks) != 1 {
 		return fmt.Errorf("round-trip mismatch")
 	}
+	cfg, cfgErr := config.Load(config.DefaultPath())
+	if cfgErr != nil {
+		return nil // no node configured yet — the round-trip is the whole check
+	}
+	if fi, err := os.Stat(cfg.StoreDir); err != nil || !fi.IsDir() {
+		return nil // configured but not created yet — nothing to open
+	}
+	if _, err := store.OpenStore(cfg.StoreDir); err != nil {
+		return fmt.Errorf("open store %s: %w", cfg.StoreDir, err)
+	}
+	// List skips unparseable docs by design (hygiene reports them); a
+	// self-test must not (FR-003 remaining → FR-014): parse every file and
+	// fail loudly so "store: OK" actually means every doc is readable.
+	var bad []string
+	var total int
+	for _, t := range []store.DocType{store.TypeDoc, store.TypeTask, store.TypeContact,
+		store.TypeChannel, store.TypeCompany, store.TypeEmail, store.TypeMemory} {
+		dir := filepath.Join(cfg.StoreDir, store.DirForType(t))
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue // missing type dir is fine
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".html") {
+				continue
+			}
+			total++
+			raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			if err == nil {
+				_, err = store.ExtractDoc(raw)
+			}
+			if err != nil {
+				bad = append(bad, store.DirForType(t)+"/"+e.Name())
+			}
+		}
+	}
+	if len(bad) > 0 {
+		limit := bad
+		if len(limit) > 5 {
+			limit = limit[:5]
+		}
+		return fmt.Errorf("store %s: %d of %d docs unreadable, first: %s",
+			cfg.StoreDir, len(bad), total, strings.Join(limit, ", "))
+	}
+	fmt.Printf("store: %s — %d docs, all readable\n", cfg.StoreDir, total)
 	return nil
 }
 
 func cmdEnroll(args []string) error {
 	fs := flag.NewFlagSet("enroll", flag.ContinueOnError)
 	coordinator := fs.String("coordinator", "", "coordinator enrollment host:port")
-	secret := fs.String("secret", "", "one-time enrollment secret")
+	secret := fs.String("secret", "", "one-time enrollment secret (deprecated: visible in process lists — use --secret-env or --secret-stdin)")
+	secretEnv := fs.String("secret-env", "", "env var holding the enrollment secret")
+	secretStdin := fs.Bool("secret-stdin", false, "read the enrollment secret from the first stdin line")
 	cfgPath := fs.String("config", config.DefaultPath(), "config file")
+	storeDir := fs.String("store", config.DefaultStoreDir(), "store directory for the joined node")
+	force := fs.Bool("force", false, "overwrite an existing node identity (cuts that team membership)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	cfg, err := config.Load(*cfgPath)
-	if err != nil {
+	if errors.Is(err, os.ErrNotExist) {
+		// Fresh machine: `leetd enroll` IS the joiner's init — bootstrap a
+		// default config instead of failing on a missing file (the wizard
+		// path does the equivalent). Saved below only after a successful
+		// enroll.
+		host, _ := os.Hostname()
+		cfg = config.Default(*storeDir, "human:"+host)
+	} else if err != nil {
 		return err
 	}
-	if *coordinator == "" || *secret == "" {
-		return fmt.Errorf("enroll needs --coordinator host:port and --secret")
+	if *coordinator == "" {
+		return fmt.Errorf("enroll needs --coordinator host:port")
+	}
+	// The secret must come from exactly one source (FR-020): --secret is
+	// kept for compatibility but lands in `ps` output; env or stdin do not.
+	sources := 0
+	if *secret != "" {
+		sources++
+	}
+	if *secretEnv != "" {
+		sources++
+	}
+	if *secretStdin {
+		sources++
+	}
+	if sources != 1 {
+		return fmt.Errorf("provide the enrollment secret via exactly one of --secret (deprecated), --secret-env NAME, or --secret-stdin")
+	}
+	if *secretEnv != "" {
+		v := os.Getenv(*secretEnv)
+		if v == "" {
+			return fmt.Errorf("env %s is empty or unset", *secretEnv)
+		}
+		*secret = v
+	}
+	if *secretStdin {
+		line, rerr := bufio.NewReader(os.Stdin).ReadString('\n')
+		if rerr != nil && line == "" {
+			return fmt.Errorf("reading secret from stdin: %w", rerr)
+		}
+		*secret = strings.TrimSpace(line)
+		if *secret == "" {
+			return fmt.Errorf("stdin secret is empty")
+		}
+	}
+	// Enrolling saves a NEW node identity over cfg.IdentityDir. On a machine
+	// that already belongs to a team, that silently cut the existing
+	// membership (and repointed the store) — refuse unless it is clearly
+	// intended (RR-015).
+	if !*force {
+		if _, err := os.Stat(filepath.Join(cfg.IdentityDir, "node.key")); err == nil {
+			return fmt.Errorf("this machine already has a node identity in %s — enrolling again would overwrite it and cut that team membership; move it away first, or pass --force to accept the loss", cfg.IdentityDir)
+		}
 	}
 	id, info, err := leetNet.Enroll(*coordinator, cfg.NodeID, *secret, "")
 	if err != nil {

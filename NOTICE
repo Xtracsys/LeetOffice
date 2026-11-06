@@ -5,7 +5,17 @@ This product includes software developed by The LeetOffice Authors.
 
 This product bundles the following third-party components:
 
-- go-git v5 (BSD-3-Clause) — https://github.com/go-git/go-git
-- hashicorp/mdns (MIT) — https://github.com/hashicorp/mdns
+- go-git v5 (BSD-3-Clause) - https://github.com/go-git/go-git
+- hashicorp/mdns (MIT) - https://github.com/hashicorp/mdns
 
-The desktop client bundles Electron (MIT) — https://www.electronjs.org/
+and, compiled in from their Go modules (see go.mod for the authoritative,
+versioned list; `go list -m all` enumerates everything shipped in the
+binary), further third-party libraries - golang.org/x/crypto,
+golang.org/x/net, golang.org/x/sys, golang.org/x/sync, cloudflare/circl,
+ProtonMail/go-crypto, miekg/dns, emirpasic/gods, kevinburke/ssh_config,
+klauspost/cpuid and their own dependencies. All are distributed under
+permissive licenses (BSD / MIT / Apache-2.0), compatible with this
+project's Apache-2.0 license; each module's LICENSE file in the module
+cache (or its repository) is the authoritative license text.
+
+The desktop client bundles Electron (MIT) - https://www.electronjs.org/

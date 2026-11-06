@@ -110,7 +110,10 @@ func (s *EnrollmentServer) enrollHandler(ca *CA) http.Handler {
 		// The one-time secret is the membership gate (D8): compare in
 		// constant time and never leak why it failed. Load the current
 		// secret under the atomic so a settings regen takes effect live.
-		if subtle.ConstantTimeCompare([]byte(req.Secret), []byte(s.currentSecret())) != 1 {
+		// An empty current secret must never open enrollment — treat it
+		// as "no invite possible" rather than matching an empty request.
+		cur := s.currentSecret()
+		if cur == "" || subtle.ConstantTimeCompare([]byte(req.Secret), []byte(cur)) != 1 {
 			http.Error(w, "wrong enrollment secret", http.StatusForbidden)
 			return
 		}

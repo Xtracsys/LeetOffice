@@ -232,14 +232,21 @@ func writeError(conn io.Writer, err error) {
 }
 
 // cleanRepoPath normalizes the requested repository path ("/main.git") and
-// keeps it inside the bare root: absolute, no traversal.
+// keeps it inside the bare root: absolute, no traversal segments. Validation
+// is per path element, not substring — a repo named "data..git" is benign
+// and serves fine; path.Clean has already collapsed any real traversal.
 func cleanRepoPath(p string) (string, error) {
 	if !strings.HasPrefix(p, "/") {
 		return "", fmt.Errorf("invalid repository path %q", p)
 	}
 	clean := path.Clean(p)
-	if clean == "/" || strings.Contains(clean, "..") {
+	if clean == "/" {
 		return "", fmt.Errorf("invalid repository path %q", p)
+	}
+	for _, elem := range strings.Split(clean, "/") {
+		if elem == ".." { // unreachable after Clean — belt and braces (FR-029)
+			return "", fmt.Errorf("invalid repository path %q", p)
+		}
 	}
 	return clean, nil
 }

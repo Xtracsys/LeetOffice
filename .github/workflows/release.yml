@@ -40,6 +40,13 @@ jobs:
           else
             sha256sum leetd-* > "checksums-${VER}.txt"
           fi
+          # The installer is a release asset too — publish its digest in the
+          # same checksums file so the README's verify step covers it.
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 ../install.sh >> "checksums-${VER}.txt"
+          else
+            sha256sum ../install.sh >> "checksums-${VER}.txt"
+          fi
           ls -l
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
@@ -48,6 +55,7 @@ jobs:
             dist/leetd-*
             dist/checksums-*.txt
             dist/leetoffice-guide.html
+            install.sh
           body: |
             ## LeetOffice ${{ github.ref_name }}
 
@@ -57,13 +65,22 @@ jobs:
 
             ### Install
 
+            Download the installer and the checksums file from this release, verify,
+            then run — pin the tag, never pipe `main` into a shell (see the README's
+            supply-chain guard):
+
             ```sh
-            curl -fsSL https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/install.sh | sh   # macOS / Linux
+            LEET_VER=${{ github.ref_name }}
+            curl -fsSL -O "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/install.sh"
+            curl -fsSL -O "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/checksums-${LEET_VER#v}.txt"
+            shasum -a 256 -c "checksums-${LEET_VER#v}.txt"
+            sh install.sh --version "${LEET_VER}"
             ```
 
             Or grab a binary below (darwin/arm64, darwin/amd64, linux/amd64,
-            linux/arm64, windows/amd64), run it, and the first-run wizard takes
-            over at http://127.0.0.1:7667.
+            linux/arm64, windows/amd64), verify with
+            `shasum -a 256 -c checksums-*.txt`, run it, and the first-run wizard
+            takes over at http://127.0.0.1:7667.
 
             ### Verify
             `shasum -a 256 -c checksums-*.txt`

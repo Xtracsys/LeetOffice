@@ -79,7 +79,7 @@ func (u *UI) handleAudit(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(`<tr><td colspan="5" class="muted">No history yet.</td></tr>`)
 	}
 	b.WriteString("</table>")
-	_, _ = w.Write([]byte(xbPageActor("History", "audit", b.String(), u.Config.Actor)))
+	_, _ = w.Write([]byte(xbPageActor("History", "audit", b.String(), u.actor())))
 }
 
 // handleSettings is the control panel: node identity, team invite code
@@ -115,7 +115,7 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(`<div class="card"><h3 style="margin-top:0">Team invite</h3>
 <p class="meta">Share the code out of band (it is also how a second machine joins: run LeetOffice there, choose <b>Join a team</b>).</p>`)
 		fmt.Fprintf(&b, `<div class="termcard" style="margin:12px 0"><div class="tl">ENROLLMENT · %s</div><div style="font-size:1.6rem;letter-spacing:.12em">%s</div></div>`,
-			html.EscapeString(enrollAddr), html.EscapeString(u.Config.EnrollmentSecret))
+			html.EscapeString(enrollAddr), html.EscapeString(u.Config.GetEnrollmentSecret()))
 		b.WriteString(`<form method="post" action="/settings/invite" class="row"><button class="ghost">regenerate invite code</button>
 <span class="meta">invalidates the old code — already-enrolled nodes are unaffected (their certificates still work)</span></form>`)
 		b.WriteString(`</div>`)
@@ -124,16 +124,17 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 	u.writeTeamRoster(&b)
 
 	// editable identity + cadence
+	base, model := u.Config.GetOllama()
 	b.WriteString(`<div class="card"><h3 style="margin-top:0">Identity &amp; sync</h3>
 <form method="post" action="/settings">`)
 	fmt.Fprintf(&b, `<label class="field"><span>Your name (attribution on every change)</span>
-<input type="text" name="actor" value="%s" required></label>`, html.EscapeString(strings.TrimPrefix(u.Config.Actor, "human:")))
+<input type="text" name="actor" value="%s" required></label>`, html.EscapeString(strings.TrimPrefix(u.actor(), "human:")))
 	fmt.Fprintf(&b, `<label class="field"><span>Sync every (seconds)</span>
-<input type="text" name="sync_every_sec" value="%d" inputmode="numeric"></label>`, u.Config.SyncEverySec)
+<input type="text" name="sync_every_sec" value="%d" inputmode="numeric"></label>`, u.Config.GetSyncEverySec())
 	fmt.Fprintf(&b, `<label class="field"><span>Ollama URL (semantic search; leave as-is for keyword search)</span>
-<input type="text" name="ollama_base" value="%s"></label>`, html.EscapeString(u.Config.Ollama.BaseURL))
+<input type="text" name="ollama_base" value="%s"></label>`, html.EscapeString(base))
 	fmt.Fprintf(&b, `<label class="field"><span>Embedding model</span>
-<input type="text" name="ollama_model" value="%s"></label>`, html.EscapeString(u.Config.Ollama.Model))
+<input type="text" name="ollama_model" value="%s"></label>`, html.EscapeString(model))
 	b.WriteString(`<div class="row"><button>save settings</button><span class="meta" id="saved"></span></div></form></div>`)
 
 	// always-on service
@@ -145,7 +146,7 @@ func (u *UI) handleSettings(w http.ResponseWriter, r *http.Request) {
 <form method="post" action="/sync"><button class="ghost">sync now</button></form>
 </div></div>`)
 
-	_, _ = w.Write([]byte(xbPageActor("Settings", "settings", b.String(), u.Config.Actor)))
+	_, _ = w.Write([]byte(xbPageActor("Settings", "settings", b.String(), u.actor())))
 }
 
 func (u *UI) writeTeamRoster(b *strings.Builder) {
@@ -180,7 +181,7 @@ func (u *UI) writeTeamRoster(b *strings.Builder) {
 		add(&members, m.NodeID, "node", st)
 	}
 	add(&members, u.Config.NodeID, "node", "this node")
-	add(&members, u.Config.Actor, "actor", "you")
+	add(&members, u.actor(), "actor", "you")
 
 	b.WriteString(`<h3>Accepted</h3>
 <table><tr><th>who</th><th>kind</th><th>status</th></tr>`)
@@ -222,7 +223,7 @@ func (u *UI) writeTeamRoster(b *strings.Builder) {
 		b.WriteString(`</table>`)
 	}
 
-	if hidden := u.Config.HiddenActors; len(hidden) > 0 {
+	if hidden := u.Config.HiddenList(); len(hidden) > 0 {
 		b.WriteString(`<h3>Hidden</h3>
 <p class="meta">Hidden on this node only. Unhide puts them back in Chat if they are still recently active.</p>
 <table><tr><th>who</th><th></th></tr>`)
@@ -281,23 +282,25 @@ func (u *UI) saveSettings(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("actor"))
 	name = strings.TrimPrefix(name, "human:")
 	if name != "" {
-		u.Config.Actor = "human:" + name
+		u.Config.SetActor("human:" + name)
 	}
-	oldEvery := u.Config.SyncEverySec
+	oldEvery := u.Config.GetSyncEverySec()
 	if n, err := strconv.Atoi(strings.TrimSpace(r.FormValue("sync_every_sec"))); err == nil && n >= 1 && n <= 600 {
-		u.Config.SyncEverySec = n
+		u.Config.SetSyncEverySec(n)
 	}
+	base, model := u.Config.GetOllama()
 	if v := strings.TrimSpace(r.FormValue("ollama_base")); v != "" {
-		u.Config.Ollama.BaseURL = v
+		base = v
 	}
 	if v := strings.TrimSpace(r.FormValue("ollama_model")); v != "" {
-		u.Config.Ollama.Model = v
+		model = v
 	}
+	u.Config.SetOllama(base, model)
 	if err := u.Config.Save(u.CfgPath); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if u.RescheduleSync != nil && u.Config.SyncEverySec != oldEvery {
+	if u.RescheduleSync != nil && u.Config.GetSyncEverySec() != oldEvery {
 		u.RescheduleSync()
 	}
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
@@ -317,13 +320,14 @@ func (u *UI) handleInviteRegen(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invite cannot rotate in this context", http.StatusBadRequest)
 		return
 	}
-	u.Config.EnrollmentSecret = store.NewID()[:12]
+	secret := store.NewID()[:12]
+	u.Config.SetEnrollmentSecret(secret)
 	if err := u.Config.Save(u.CfgPath); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if u.RotateEnrollment != nil {
-		u.RotateEnrollment(u.Config.EnrollmentSecret)
+		u.RotateEnrollment(secret)
 	}
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }

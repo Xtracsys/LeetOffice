@@ -9,11 +9,11 @@ zero cloud, zero egress.
 
 ```sh
 # Pinned, checksum-verified install (never pipe `main` to a shell — see SECURITY note)
-LEET_VER=v1.0.0
-curl -fsSL "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/install.sh" -o /tmp/leetoffice-install.sh
-# Verify SHA256 before executing (replace with the published digest for the release)
-echo "<PUBLISH_RELEASE_SHA256>  /tmp/leetoffice-install.sh" | sha256sum -c -
-sh /tmp/leetoffice-install.sh
+LEET_VER=v0.1.8
+curl -fsSL -O "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/leetd-${LEET_VER#v}-darwin-arm64"  # pick your platform
+curl -fsSL -O "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/checksums-${LEET_VER#v}.txt"
+grep "leetd-${LEET_VER#v}-darwin-arm64" "checksums-${LEET_VER#v}.txt" | shasum -a 256 -c -
+chmod +x "leetd-${LEET_VER#v}-darwin-arm64" && ./"leetd-${LEET_VER#v}-darwin-arm64"
 ```
 
 ```sh
@@ -74,13 +74,32 @@ traffic stays quiet). `mark_read` keeps the cursor in `node.json`.
 
 ## Install
 
-**macOS / Linux (pinned, checksum-verified):**
+**Any platform, no script (works for every release):** grab a binary from
+[releases](https://github.com/Xtracsys/LeetOffice/releases) and verify it —
+this is the recommended path:
 
 ```sh
-LEET_VER=v1.0.0
-curl -fsSL "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/install.sh" -o /tmp/leetoffice-install.sh
-echo "<PUBLISH_RELEASE_SHA256>  /tmp/leetoffice-install.sh" | sha256sum -c -
-sh /tmp/leetoffice-install.sh
+LEET_VER=v0.1.8
+curl -fsSL -O "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/leetd-${LEET_VER#v}-darwin-arm64"  # your platform
+curl -fsSL -O "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/checksums-${LEET_VER#v}.txt"
+grep "leetd-${LEET_VER#v}-darwin-arm64" "checksums-${LEET_VER#v}.txt" | shasum -a 256 -c -
+chmod +x leetd-*-darwin-arm64 && ./leetd-*-darwin-arm64
+```
+
+Platforms: darwin/arm64 · darwin/amd64 · linux/amd64 · linux/arm64 ·
+windows/amd64. Static, ~13 MB, zero dependencies (pure Go, no cgo).
+
+**macOS / Linux installer (pinned, checksum-verified):** the workflow
+attaches `install.sh` (and its SHA-256, in the same checksums file) to
+every release **from the next release onward** — for tags before that,
+use the binary path above:
+
+```sh
+LEET_VER=v0.1.8   # use a tag that lists install.sh under Assets
+curl -fsSL -O "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/install.sh"
+curl -fsSL -O "https://github.com/Xtracsys/LeetOffice/releases/download/${LEET_VER}/checksums-${LEET_VER#v}.txt"
+grep "install.sh" "checksums-${LEET_VER#v}.txt" | shasum -a 256 -c -
+sh install.sh --version "${LEET_VER}"
 ```
 
 **Homebrew** (macOS / Linux, no tap yet):
@@ -88,12 +107,6 @@ sh /tmp/leetoffice-install.sh
 ```sh
 brew install --formula https://raw.githubusercontent.com/Xtracsys/LeetOffice/main/Formula/leetd.rb
 ```
-
-**Any platform, no script:** grab a binary from
-[releases](https://github.com/Xtracsys/LeetOffice/releases) —
-darwin/arm64 · darwin/amd64 · linux/amd64 · linux/arm64 · windows/amd64 —
-verify with `shasum -a 256 -c checksums-*.txt`, run it. Static, ~13 MB,
-zero dependencies (pure Go, no cgo).
 
 **From source:** `go build -o leetd ./cmd/leetd`
 

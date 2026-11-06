@@ -107,7 +107,7 @@ func (u *UI) handleAPIState(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"me":       u.Config.Actor,
+		"me":       u.actor(),
 		"channels": chanRows,
 		"current":  current,
 		"people":   people,
@@ -146,8 +146,8 @@ func (u *UI) cachedPeople() map[string]string {
 			people[a] = "recent"
 		}
 	}
-	if _, ok := people[u.Config.Actor]; !ok {
-		people[u.Config.Actor] = "online"
+	if _, ok := people[u.actor()]; !ok {
+		people[u.actor()] = "online"
 	}
 	peopleCache.mu.Lock()
 	peopleCache.people, peopleCache.at = people, time.Now()
@@ -194,7 +194,7 @@ func (u *UI) handleAPISend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	msg, _, err := chat.Send(u.Store, u.Repo, u.Config.Actor, req.Channel, req.Text)
+	msg, _, err := chat.Send(u.Store, u.Repo, u.actor(), req.Channel, req.Text)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -278,7 +278,7 @@ func (u *UI) handleChat(w http.ResponseWriter, r *http.Request) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LeetOffice — Team</title><style>` + chatCSS + `</style></head>
 <body>
-` + xbNav("chat", u.Config.Actor) + `
+` + xbNav("chat", u.actor()) + `
 <div class="app">
 <nav class="rail">
   <div class="brand"><span class="pulse"></span>` + html.EscapeString(teamName(u)) + `<small>LOCAL · ENCRYPTED · YOURS</small></div>
@@ -369,7 +369,7 @@ refresh(); setInterval(refresh, 2500);
 }
 
 func teamName(u *UI) string {
-	name := strings.TrimPrefix(u.Config.Actor, "human:")
+	name := strings.TrimPrefix(u.actor(), "human:")
 	if name == "" {
 		name = u.Config.NodeID
 	}

@@ -11,8 +11,11 @@ We aim to respond within 72 hours.
 - Transport: mTLS on all node traffic; membership via one-time enrollment
   secret → CA-signed node certificates. Rogue nodes are rejected at the
   handshake.
-- At rest: field-level AES-256-GCM for sensitive values; volume encryption
-  (Cryptomator/VeraCrypt) is the operator's layer and recommended.
+- At rest: documents are stored as readable HTML on disk today. Field-level
+  AES-256-GCM (D2) is implemented in the codebase but not yet applied to the
+  store; until it ships, **volume encryption (Cryptomator/VeraCrypt/FileVault)
+  is the operator's layer and strongly recommended**. The store directory and
+  node identity files are permission-restricted (`0600`/`0700`).
 - Audit: every change is an attributed, timestamped git commit.
 - **100% local by design** — the daemon makes no outbound connections except
   to nodes you enrolled with and (optionally) a local Ollama.

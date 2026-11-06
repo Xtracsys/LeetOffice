@@ -3,7 +3,7 @@
 > **Working title:** LeetOffice
 > **Status:** Requirements in progress (living document)
 > **Project folder:** `/Volumes/XSdrive/Projects/leetoffice`
-> **Last updated:** 2026-08-15
+> **Last updated:** 2026-10-11
 
 ## 1. Purpose & Vision
 
@@ -100,6 +100,9 @@ Primary goals:
 | M23 | Extensibility | **Skills & Tools Registry** — import/export, versioning, stability lifecycle | ✅ Decided |
 | M24 | Packaging | **Build Specification & Runbook** — buildable spec + AI build prompt | ✅ Decided |
 | M25 | Communication | **Team chat** — humans + agents converse in shared channels; messages are blocks | ✅ Decided |
+| M26 | Clients | **Notion-style visual pages** — richer block editor and page hierarchy | 🟡 Scope agreed; phase details open |
+| M27 | Store | **Structured collections & views** — custom properties and saved database-style views | 🟡 Scope agreed; schema/details open |
+| M28 | Access | **Authenticated LAN access** — protect browser UI and remote agent endpoints | 🟡 Agent tokens, human accounts, managed certificates selected; implementation open |
 
 ## 6. Decisions Log
 
@@ -184,6 +187,26 @@ Ship in v1: **(a) team memory synthesis** (near-continuous → MEMORY.md), **(b)
 - `RecentActors` surfaces who has been active in a workspace.
 - Channels can be linked (@-mentioned) into tasks, docs, and other items via the block link graph.
 
+### D20 — Notion-style LAN workspace (M26/M27/M28)
+LeetOffice will grow into a broader **local LAN workspace for humans and agents**, delivered in phases. This is a feature area within LeetOffice, not a separate app or parallel store.
+- **Scope:** both richer visual pages (including a more capable block editor and page hierarchy) and structured collections with custom properties and saved database-style views. The user chose both, phased; the feature order remains open.
+- **Reuse:** build on the existing store, git audit/sync, and agent-tool surface rather than creating a second source of truth.
+- **Agent model:** carry forward D7's read/write access with full actor attribution and audit as the starting policy; any change to that policy must be an explicit later decision.
+- **Agent API:** secure the existing MCP-over-HTTP endpoint first; defer a general REST API unless a later integration need justifies it.
+- **LAN security prerequisite:** the current HTTP listener defaults to `127.0.0.1:7667`. The browser UI and `/mcp` share that listener; the HTTP MCP handler has no request-level authentication, and the existing mTLS protection is for node Git sync/enrollment, not these HTTP routes. Do not expose the current HTTP listener to the LAN merely by widening its bind address. Add authenticated transport, per-agent identity/attribution, and authorization before remote agent access is enabled.
+
+### D21 — Agent authentication for LAN HTTP (M28)
+Agents must satisfy **both** device enrollment and a unique, revocable credential for that agent. The credential—not a caller-supplied actor label—determines the audit identity. This separates trusted-machine membership from per-agent attribution and lets one agent be revoked without sharing identity with other agents on the same device. The precise HTTP transport, credential issuance/storage/rotation, and authorization checks remain open (O7).
+
+### D22 — Per-agent API credential (M28)
+Each enrolled agent will present a **unique random API token over HTTPS**. LeetOffice Settings will manage token creation and revocation. The token determines the agent actor for audit; the caller cannot choose its own actor label. Human UI authentication, HTTPS certificate management, safe token storage/rotation, and authorization checks remain implementation questions (O7).
+
+### D23 — Human LAN sign-in (M28)
+Human users will sign in with **individual local LeetOffice accounts**. Each human action is attributed to that account. The initial LAN workspace will not require a cloud identity provider. Account provisioning/recovery, session policy, and HTTPS certificate management remain implementation questions (O7).
+
+### D24 — Certificate handling is transparent to end users (M28)
+Certificates are acceptable for HTTPS and enrolled-device trust if LeetOffice manages their lifecycle. Normal setup must not require an end user to obtain, create, copy, install, renew, or rotate certificate files. Prefer a fully local managed certificate authority to preserve the no-cloud design; exact issuance, trust, and renewal mechanics remain open (O7).
+
 ## 7. Open Questions
 
 | # | Module | Question | My lean |
@@ -194,8 +217,14 @@ Ship in v1: **(a) team memory synthesis** (near-continuous → MEMORY.md), **(b)
 | ~~O4~~ | M17 | ~~Human client — Obsidian or built-in UI?~~ | ✅ Resolved → D14 (bundled app + browser fallback) |
 | ~~O5~~ | M19 | ~~Which automations first?~~ | ✅ Resolved → D16 (memory + digest + hygiene) |
 | ~~O6~~ | M22 | ~~License for the open-source release?~~ | ✅ Resolved → D18 (Apache-2.0) |
+| O7 | M28 | What are the remaining details for local account setup/recovery, sessions, managed certificate issuance/renewal, API-token storage/rotation, and request authorization? | Keep identity and recovery local; provide visual setup; protect stored token verifiers; make revocation immediate; derive actor identity from the authenticated session or token. |
+| O8 | M26/M27 | Which workspace feature ships first after the security prerequisite? | Lean: structured collections/views first (largest gap in the current docs/tasks/chat base), then richer pages/editor. The user chose both, not their order. |
+| ~~O9~~ | M28 | ~~Should agents authenticate as enrolled devices only or also have individual credentials?~~ | ✅ Resolved → D21 (both device enrollment and unique, revocable per-agent credentials). |
+| ~~O10~~ | M28 | ~~What credential should agents present?~~ | ✅ Resolved → D22 (unique random API token per agent, over HTTPS, managed in Settings). |
+| ~~O11~~ | M28 | ~~How should human users sign in?~~ | ✅ Resolved → D23 (individual local accounts). |
+| ~~O12~~ | M28 | ~~Must end users manually manage certificates?~~ | ✅ Resolved → D24 (certificate lifecycle managed by LeetOffice; no manual certificate handling required). |
 
-**All open questions resolved — 19 decisions, 25 modules.**
+**Core requirements established — 19 decisions, 25 modules. Workspace add-on: D20–D24, 3 modules added; 2 add-on questions remain open.**
 
 ## 8. Tool Surface (v1 starter set — grows via the Registry per D11/D12)
 

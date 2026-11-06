@@ -5,10 +5,13 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 )
 
 // Defaults for a fat-client node. The main share is configurable (D10).
@@ -18,8 +21,16 @@ const (
 	DefaultSyncEvery  = 5 // seconds (D5 short-cadence)
 )
 
-// Config is the node configuration.
+// Config is the node configuration. A live config is shared between HTTP
+// handlers (settings writes) and background loops (sync, digest) — access
+// the fields mutated at runtime through the accessors below, not directly:
+// Actor, SyncEverySec, EnrollmentSecret, Ollama.*, HiddenActors,
+// AgentSubscriptions. The rest (identity, paths, listeners, role) is
+// written only before the config goes live.
 type Config struct {
+	// mu guards the runtime-mutated fields above. Do not copy a Config.
+	mu sync.RWMutex
+
 	NodeID    string `json:"node_id"`
 	Actor     string `json:"actor"` // "human:<id>" or "agent:<id>" (D7)
 	Role      string `json:"role"`  // "client" | "coordinator"
@@ -31,6 +42,10 @@ type Config struct {
 		Git    string `json:"git"`    // mTLS git transport (coordinator)
 		Enroll string `json:"enroll"` // enrollment endpoint (coordinator, D8)
 	} `json:"listen"`
+	LAN struct {
+		Enabled  bool   `json:"enabled,omitempty"`
+		Hostname string `json:"hostname,omitempty"` // DNS name or IP in managed HTTPS certificate SANs
+	} `json:"lan,omitempty"`
 
 	EnrollmentSecret string `json:"enrollment_secret,omitempty"` // coordinator only (D8)
 	SyncEverySec     int    `json:"sync_every_sec"`
@@ -63,12 +78,110 @@ type AgentSubscription struct {
 	Cursor   map[string]string `json:"cursor,omitempty"` // slug → last-seen RFC3339 ts
 }
 
+// --- runtime-mutated field accessors ---------------------------------------
+//
+// HTTP handlers write these while background loops and render paths read
+// them; the direct fields are left exported for JSON and startup wiring,
+// but live traffic must use these.
+
+// GetActor returns the node's actor id.
+func (c *Config) GetActor() string {
+	if c == nil {
+		return ""
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Actor
+}
+
+// SetActor replaces the node's actor id (settings rename).
+func (c *Config) SetActor(actor string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Actor = actor
+}
+
+// GetSyncEverySec returns the sync cadence in seconds.
+func (c *Config) GetSyncEverySec() int {
+	if c == nil {
+		return 0
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.SyncEverySec
+}
+
+// SetSyncEverySec replaces the sync cadence (settings save).
+func (c *Config) SetSyncEverySec(n int) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.SyncEverySec = n
+}
+
+// GetOllama returns the semantic-search endpoint settings.
+func (c *Config) GetOllama() (base, model string) {
+	if c == nil {
+		return "", ""
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Ollama.BaseURL, c.Ollama.Model
+}
+
+// SetOllama replaces the semantic-search endpoint settings (settings save).
+func (c *Config) SetOllama(base, model string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Ollama.BaseURL, c.Ollama.Model = base, model
+}
+
+// GetEnrollmentSecret returns the current team invite code.
+func (c *Config) GetEnrollmentSecret() string {
+	if c == nil {
+		return ""
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.EnrollmentSecret
+}
+
+// SetEnrollmentSecret rotates the team invite code (settings regen).
+func (c *Config) SetEnrollmentSecret(secret string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.EnrollmentSecret = secret
+}
+
+// HiddenList returns a snapshot of the hide list.
+func (c *Config) HiddenList() []string {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]string(nil), c.HiddenActors...)
+}
+
 // IsHidden reports whether name is on the local hide list.
 func (c *Config) IsHidden(name string) bool {
 	if c == nil {
 		return false
 	}
 	name = strings.TrimSpace(name)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	for _, h := range c.HiddenActors {
 		if h == name {
 			return true
@@ -83,10 +196,22 @@ func (c *Config) HideActor(name string) {
 		return
 	}
 	name = strings.TrimSpace(name)
-	if name == "" || name == c.Actor || name == c.NodeID || c.IsHidden(name) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if name == "" || name == c.Actor || name == c.NodeID || c.containsHidden(name) {
 		return
 	}
 	c.HiddenActors = append(c.HiddenActors, name)
+}
+
+// containsHidden is the lock-free inner check (caller holds mu).
+func (c *Config) containsHidden(name string) bool {
+	for _, h := range c.HiddenActors {
+		if h == name {
+			return true
+		}
+	}
+	return false
 }
 
 // CanonicalActor turns "hermes" into "agent:hermes". Prefixed ids are kept.
@@ -117,6 +242,8 @@ func SameActor(a, b string) bool { return ActorKey(a) == ActorKey(b) }
 // watch for the same actor and keeps its cursors.
 func (c *Config) Subscribe(actor string, channels []string) AgentSubscription {
 	actor = CanonicalActor(actor)
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	var keep map[string]string
 	out := c.AgentSubscriptions[:0]
 	if c.AgentSubscriptions == nil {
@@ -149,6 +276,8 @@ func (c *Config) Subscription(actor string) (AgentSubscription, bool) {
 	if c == nil {
 		return AgentSubscription{}, false
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	for _, sub := range c.AgentSubscriptions {
 		if SameActor(sub.Actor, actor) {
 			return sub, true
@@ -183,6 +312,8 @@ func (c *Config) MarkRead(actor, channel, ts string) bool {
 	if actor == "" || channel == "" || ts == "" {
 		return false
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for i := range c.AgentSubscriptions {
 		if !SameActor(c.AgentSubscriptions[i].Actor, actor) {
 			continue
@@ -198,10 +329,15 @@ func (c *Config) MarkRead(actor, channel, ts string) bool {
 
 // UnhideActor removes name from the hide list.
 func (c *Config) UnhideActor(name string) {
-	if c == nil || len(c.HiddenActors) == 0 {
+	if c == nil {
 		return
 	}
 	name = strings.TrimSpace(name)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.HiddenActors) == 0 {
+		return
+	}
 	out := c.HiddenActors[:0]
 	for _, h := range c.HiddenActors {
 		if h != name {
@@ -293,14 +429,24 @@ func Load(path string) (*Config, error) {
 	if err := json.Unmarshal(raw, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	c.fillDefaults()
+	c.fillDefaultsLocked()
+	if err := c.Validate(); err != nil {
+		return nil, fmt.Errorf("validate %s: %w", path, err)
+	}
 	c.Path = path
 	return &c, nil
 }
 
-// Save writes the config atomically enough for a local node.
+// Save writes the config atomically enough for a local node. The mutex is
+// held across fillDefaults/Validate/marshal so a snapshot is written, not a
+// half-updated struct.
 func (c *Config) Save(path string) error {
-	c.fillDefaults()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.fillDefaultsLocked()
+	if err := c.validateLocked(); err != nil {
+		return err
+	}
 	raw, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
@@ -311,7 +457,66 @@ func (c *Config) Save(path string) error {
 	return os.WriteFile(path, raw, 0o600)
 }
 
-func (c *Config) fillDefaults() {
+// Validate enforces the listener boundary. A non-loopback HTTP bind is never
+// accepted unless LAN mode is explicitly enabled and the bind is a private,
+// concrete IP address with a validated HTTPS certificate hostname.
+func (c *Config) Validate() error {
+	if c == nil {
+		return fmt.Errorf("config is nil")
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.validateLocked()
+}
+
+func (c *Config) validateLocked() error {
+	host, portText, err := net.SplitHostPort(c.Listen.HTTP)
+	if err != nil {
+		return fmt.Errorf("listen.http must be an explicit IP:port: %w", err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("listen.http has an invalid TCP port")
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.IsUnspecified() || ip.IsMulticast() {
+		return fmt.Errorf("listen.http host must be a concrete IP address")
+	}
+	if !c.LAN.Enabled {
+		if !ip.IsLoopback() {
+			return fmt.Errorf("non-loopback listen.http requires explicit lan.enabled=true")
+		}
+		return nil
+	}
+	if ip.IsLoopback() || !ip.IsPrivate() {
+		return fmt.Errorf("LAN listener must use a private, non-loopback IP address")
+	}
+	if !validTLSHostname(c.LAN.Hostname) {
+		return fmt.Errorf("lan.hostname must be a valid DNS name or IP address for the HTTPS certificate")
+	}
+	return nil
+}
+
+func validTLSHostname(host string) bool {
+	if net.ParseIP(host) != nil || host == "" || len(host) > 253 || strings.HasSuffix(host, ".") {
+		return net.ParseIP(host) != nil
+	}
+	for _, label := range strings.Split(strings.ToLower(host), ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// fillDefaultsLocked fills startup defaults (caller holds mu, or the config
+// is not yet shared).
+func (c *Config) fillDefaultsLocked() {
 	if c.SyncEverySec <= 0 {
 		c.SyncEverySec = DefaultSyncEvery
 	}

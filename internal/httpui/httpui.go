@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -49,6 +50,10 @@ type UI struct {
 	updateErr error
 }
 
+// actor returns the node's actor id through the config accessor (the
+// settings handler can rename it concurrently).
+func (u *UI) actor() string { return u.Config.GetActor() }
+
 // Handler builds the HTTP routes.
 func (u *UI) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -69,7 +74,31 @@ func (u *UI) Handler() http.Handler {
 	mux.HandleFunc("/settings/update/apply", u.handleUpdateApply)
 	mux.HandleFunc("/settings/hide", u.handleHideActor)
 	mux.HandleFunc("/settings/unhide", u.handleUnhideActor)
-	return mux
+	return GuardMutations(mux)
+}
+
+// GuardMutations is the localhost CSRF gate. The UI has no auth token, so a
+// web page open in the operator's browser could otherwise form-POST
+// /settings/invite, /doc/<slug>, or /settings/update/apply against
+// http://127.0.0.1:<port> silently. Browsers attach Origin to every POST,
+// so a mismatched (cross-site) Origin is refused; same-origin pages, the
+// Electron shell, and non-browser clients (curl, MCP stdio) pass. GET/HEAD
+// are read-only here and are not gated.
+func GuardMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+		default:
+			if o := r.Header.Get("Origin"); o != "" {
+				ou, err := url.Parse(o)
+				if err != nil || !strings.EqualFold(ou.Host, r.Host) {
+					http.Error(w, "cross-site write refused (Origin does not match Host)", http.StatusForbidden)
+					return
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 const pageStyle = `<style>
@@ -98,12 +127,12 @@ func (u *UI) handleHome(w http.ResponseWriter, r *http.Request) {
 	var b strings.Builder
 	b.WriteString(`<div class="eyebrow"><span class="pulse"></span>FILE / DOCS · SHARED WORKSPACE</div><h1>Docs</h1>`)
 	fmt.Fprintf(&b, "<p class=meta>node %s · role %s · store %s · actor %s · <a href='/settings'>settings</a></p>",
-		html.EscapeString(u.Config.NodeID), u.Config.Role, html.EscapeString(u.Config.StoreDir), html.EscapeString(u.Config.Actor))
+		html.EscapeString(u.Config.NodeID), html.EscapeString(u.Config.Role), html.EscapeString(u.Config.StoreDir), html.EscapeString(u.actor()))
 
 	b.WriteString("<table><tr><th>slug</th><th>type</th><th>title</th><th>updated</th><th>links</th></tr>")
 	for _, d := range docs {
 		fmt.Fprintf(&b, "<tr><td><a href='/doc/%s'>%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%d</td></tr>",
-			d.Slug, html.EscapeString(d.Slug), d.Type, html.EscapeString(d.Title), d.Updated, linkTotal(d))
+			url.PathEscape(d.Slug), html.EscapeString(d.Slug), html.EscapeString(string(d.Type)), html.EscapeString(d.Title), html.EscapeString(d.Updated), linkTotal(d))
 	}
 	b.WriteString("</table>")
 
@@ -113,7 +142,7 @@ func (u *UI) handleHome(w http.ResponseWriter, r *http.Request) {
 <input name="title" placeholder="title" required size=32>
 <textarea name="body" placeholder="first paragraph (optional)"></textarea>
 <div class="row" style="margin-top:12px"><button>create</button></div></form></div>`)
-	_, _ = w.Write([]byte(xbPageActor("Docs", "docs", b.String(), u.Config.Actor)))
+	_, _ = w.Write([]byte(xbPageActor("Docs", "docs", b.String(), u.actor())))
 }
 
 func linkTotal(d *store.Doc) int {
@@ -143,11 +172,11 @@ func (u *UI) handleNew(w http.ResponseWriter, r *http.Request) {
 	if body := r.FormValue("body"); body != "" {
 		d.AddParagraph(body)
 	}
-	if err := u.Store.Save(d, u.Config.Actor); err != nil {
+	if err := u.Store.Save(d, u.actor()); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	if _, err := u.Repo.CommitAll(u.Config.Actor, "ui: create "+slug); err != nil && err != leetSync.ErrNoChanges {
+	if _, err := u.Repo.CommitAll(u.actor(), "ui: create "+slug); err != nil && err != leetSync.ErrNoChanges {
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -176,7 +205,7 @@ func (u *UI) renderDoc(w http.ResponseWriter, d *store.Doc) {
 	var b strings.Builder
 	fmt.Fprintf(&b, `<div class="eyebrow"><span class="pulse"></span>FILE / DOC · %s</div>`, html.EscapeString(d.Slug))
 	fmt.Fprintf(&b, "<h1>%s</h1><p class=meta>%s · v%d · updated %s · last editor <code>%s</code> · <a href='/audit'>history</a></p>",
-		html.EscapeString(d.Title), d.Type, d.Version, d.Updated, html.EscapeString(d.Audit.LastEditor))
+		html.EscapeString(d.Title), html.EscapeString(string(d.Type)), d.Version, html.EscapeString(d.Updated), html.EscapeString(d.Audit.LastEditor))
 
 	b.WriteString(`<div class="card"><form method="post">`)
 	for i := range d.Blocks {
@@ -185,13 +214,13 @@ func (u *UI) renderDoc(w http.ResponseWriter, d *store.Doc) {
 			b.WriteString(`<blockquote class="conflict">⚠ conflicting edit — both versions retained (merge D6)</blockquote>`)
 		}
 		fmt.Fprintf(&b, "<div class='field'><span class='mono muted' style='font-size:10px'>%s</span><textarea name='block_%s'>%s</textarea></div>",
-			blk.Type, blk.ID, html.EscapeString(blk.Content))
+			html.EscapeString(string(blk.Type)), html.EscapeString(blk.ID), html.EscapeString(blk.Content))
 	}
 	b.WriteString(`<h3>Add block</h3>
 <select name="new_type"><option>paragraph</option><option>heading</option><option>task-item</option><option>list-item</option><option>code</option><option>field</option><option>divider</option></select>
 <textarea name="new_content" placeholder="new block content"></textarea>
 <div class="row" style="margin-top:12px"><button>save</button></div></form></div>`)
-	_, _ = w.Write([]byte(xbPageActor(d.Title, "docs", b.String(), u.Config.Actor)))
+	_, _ = w.Write([]byte(xbPageActor(d.Title, "docs", b.String(), u.actor())))
 }
 
 func (u *UI) saveEdits(w http.ResponseWriter, r *http.Request, d *store.Doc) {
@@ -211,11 +240,11 @@ func (u *UI) saveEdits(w http.ResponseWriter, r *http.Request, d *store.Doc) {
 		changed = true
 	}
 	if changed {
-		if err := u.Store.Save(d, u.Config.Actor); err != nil {
+		if err := u.Store.Save(d, u.actor()); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		if _, err := u.Repo.CommitAll(u.Config.Actor, "ui: edit "+d.Slug); err != nil && err != leetSync.ErrNoChanges {
+		if _, err := u.Repo.CommitAll(u.actor(), "ui: edit "+d.Slug); err != nil && err != leetSync.ErrNoChanges {
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -232,7 +261,7 @@ func (u *UI) handleSync(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no main share configured", 400)
 		return
 	}
-	res, err := u.Repo.Sync("origin", u.Config.Actor)
+	res, err := u.Repo.Sync("origin", u.actor())
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -250,7 +279,7 @@ func (u *UI) handleMemory(w http.ResponseWriter, r *http.Request) {
 	b.WriteString("<pre style='white-space:pre-wrap;margin-top:18px'>")
 	b.WriteString(html.EscapeString(string(raw)))
 	b.WriteString("</pre>")
-	_, _ = w.Write([]byte(xbPageActor("Memory", "memory", b.String(), u.Config.Actor)))
+	_, _ = w.Write([]byte(xbPageActor("Memory", "memory", b.String(), u.actor())))
 }
 
 func slugify(s string) string {
@@ -307,10 +336,10 @@ func (u *UI) handleAgents(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, `<p class="meta">HTTP: <code>GET http://%s/api/agent/inbox?actor=agent:hermes</code></p>`, html.EscapeString(u.Config.Listen.HTTP))
 
 	b.WriteString(`</div><div class="card"><h3 style="margin-top:0">HTTP</h3>`)
-	fmt.Fprintf(&b, "<p>Point an MCP HTTP client at <code>http://%s/mcp</code>.</p>", u.Config.Listen.HTTP)
+	fmt.Fprintf(&b, "<p>Point an MCP HTTP client at <code>http://%s/mcp</code>.</p>", html.EscapeString(u.Config.Listen.HTTP))
 
 	b.WriteString(`</div><div class="card"><h3 style="margin-top:0">CLI (no MCP)</h3>`)
 	b.WriteString("<p>Agents or scripts can also drive the store directly: <code>leetd doc</code>, <code>leetd audit</code>, and the store-backed MCP via <code>leetd mcp</code>.</p></div>")
 
-	_, _ = w.Write([]byte(xbPageActor("Agents", "agents", b.String(), u.Config.Actor)))
+	_, _ = w.Write([]byte(xbPageActor("Agents", "agents", b.String(), u.actor())))
 }

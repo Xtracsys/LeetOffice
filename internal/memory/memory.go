@@ -146,22 +146,8 @@ func dateOf(updated string) string {
 	return strings.SplitN(updated, "T", 2)[0]
 }
 
-// dirOf maps a doc type to its on-disk folder, mirroring the store layout.
+// dirOf maps a doc type to its on-disk folder — store.DirForType, so memory
+// output can never drift from the store layout.
 func dirOf(t store.DocType) string {
-	switch t {
-	case store.TypeTask:
-		return "tasks"
-	case store.TypeContact:
-		return "contacts"
-	case store.TypeChannel:
-		return "channels"
-	case store.TypeCompany:
-		return "companies"
-	case store.TypeEmail:
-		return "emails"
-	case store.TypeMemory:
-		return "memory"
-	default:
-		return "docs"
-	}
+	return store.DirForType(t)
 }

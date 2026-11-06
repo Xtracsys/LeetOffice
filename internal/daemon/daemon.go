@@ -38,6 +38,7 @@ type Node struct {
 	syncEveryCh chan struct{}
 	syncRun     sync.Mutex          // one Sync at a time (ticker + KickSync)
 	syncHook    func(reason string) // tests: fires at the start of each syncOnce
+	loopsWG     sync.WaitGroup      // background loops; WaitLoops drains after ctx cancel
 }
 
 // Start opens the store and repo described by cfg.
@@ -75,6 +76,13 @@ func StartAtPath(cfgPath string) (*Node, *config.Config, error) {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return nil, nil, err
+	}
+	// Fail closed BEFORE the store is opened: lan.enabled promises exposure
+	// this build does not implement yet, so a config asking for it must
+	// never bring a node up (the config validator already rejects
+	// non-loopback binds without the flag; this is the second gate).
+	if cfg.LAN.Enabled {
+		return nil, cfg, fmt.Errorf("LAN mode is not available in this build: keep listen.http on a loopback address (lan.enabled is reserved for a future release)")
 	}
 	n, err := Start(cfg)
 	if err != nil {
@@ -125,7 +133,7 @@ func (n *Node) ServeHTTP() http.Handler {
 	mux.Handle("/mcp", n.MCP.Handler())
 	mux.HandleFunc("/service/install", handleServiceInstall(n.Cfg))
 	mux.HandleFunc("/service/uninstall", handleServiceUninstall())
-	return mux
+	return httpui.GuardMutations(mux)
 }
 
 // StartLoops runs the background work a node owns: coordinator networking
@@ -140,14 +148,33 @@ func (n *Node) StartLoops(ctx context.Context) error {
 		}
 	}
 	if n.Cfg.MainShare != "" {
-		go n.syncLoop(ctx)
+		n.loopsWG.Add(1)
+		go func() {
+			defer n.loopsWG.Done()
+			n.syncLoop(ctx)
+		}()
 	}
-	go n.jobsLoop(ctx)
+	n.loopsWG.Add(1)
+	go func() {
+		defer n.loopsWG.Done()
+		n.jobsLoop(ctx)
+	}()
 	return nil
 }
 
+// WaitLoops blocks until every background loop started by StartLoops has
+// returned. Call it after cancelling the loop context — tests use it so no
+// goroutine is still writing the store when TempDir cleanup runs. The final
+// syncRun pass also drains a kicked sync (KickSync is fire-and-forget, not
+// tracked in loopsWG); syncOnce holds syncRun for its whole run.
+func (n *Node) WaitLoops() {
+	n.loopsWG.Wait()
+	n.syncRun.Lock()
+	n.syncRun.Unlock()
+}
+
 func (n *Node) syncEvery() time.Duration {
-	sec := n.Cfg.SyncEverySec
+	sec := n.Cfg.GetSyncEverySec()
 	if sec <= 0 {
 		sec = config.DefaultSyncEvery
 	}
@@ -196,7 +223,7 @@ func (n *Node) SyncOnce() (*leetSync.SyncResult, error) {
 	if n.Cfg.MainShare == "" {
 		return nil, fmt.Errorf("no main share configured")
 	}
-	res, err := n.Repo.Sync("origin", n.Cfg.Actor)
+	res, err := n.Repo.Sync("origin", n.Cfg.GetActor())
 	if err != nil {
 		return res, err
 	}
@@ -248,7 +275,7 @@ func (n *Node) jobsLoop(ctx context.Context) {
 			if fp == lastSynth {
 				break
 			}
-			if err := memory.Synthesize(n.Store, n.Repo, n.Cfg.Actor); err != nil {
+			if err := memory.Synthesize(n.Store, n.Repo, n.Cfg.GetActor()); err != nil {
 				log.Printf("memory: %v", err)
 				break
 			}
@@ -281,7 +308,7 @@ func (n *Node) jobsLoop(ctx context.Context) {
 // on success, or "" so the next tick retries.
 func (n *Node) writeDailyDigest() string {
 	day := time.Now().UTC()
-	if _, err := memory.DailyDigest(n.Store, n.Repo, day, n.Cfg.Actor); err != nil {
+	if _, err := memory.DailyDigest(n.Store, n.Repo, day, n.Cfg.GetActor()); err != nil {
 		log.Printf("digest: %v", err)
 		return ""
 	}

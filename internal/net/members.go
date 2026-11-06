@@ -33,6 +33,7 @@ func RecordIssued(dir, nodeID string, certPEM []byte) error {
 		}
 		return r
 	}, nodeID)
+	safe = strings.ReplaceAll(safe, "..", "-")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}

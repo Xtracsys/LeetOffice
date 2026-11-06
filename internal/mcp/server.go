@@ -303,22 +303,8 @@ func toolDescriptors() []map[string]any {
 // --- Helpers ---------------------------------------------------------------
 
 func docPath(d *store.Doc) string {
-	dir := "docs"
-	switch d.Type {
-	case store.TypeTask:
-		dir = "tasks"
-	case store.TypeContact:
-		dir = "contacts"
-	case store.TypeChannel:
-		dir = "channels"
-	case store.TypeCompany:
-		dir = "companies"
-	case store.TypeEmail:
-		dir = "emails"
-	case store.TypeMemory:
-		dir = "memory"
-	}
-	return dir + "/" + d.Slug + ".html"
+	// Same mapping Store.Path writes to — one source of truth (store.DirForType).
+	return store.DirForType(d.Type) + "/" + d.Slug + ".html"
 }
 
 func argStr(args map[string]any, key string) string {

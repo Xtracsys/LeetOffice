@@ -57,6 +57,13 @@ func (n *Node) serveCoordinator(ctx context.Context) error {
 		return fmt.Errorf("git service: %w", err)
 	}
 	log.Printf("net: git service on %s (mTLS, bare root %s)", gitSrv.Addr(), bareRoot)
+	// The git listener must not outlive the loop context — a node stopped
+	// and restarted in-process (tests, wizard flows) would otherwise hold
+	// the port and make the next bind fail.
+	go func() {
+		<-ctx.Done()
+		_ = gitSrv.Close()
+	}()
 
 	// enrollment endpoint (D8): one-time secret → node cert
 	enrollPort := 0

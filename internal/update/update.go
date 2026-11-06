@@ -133,11 +133,19 @@ func (c *Client) Latest(ctx context.Context) (*Release, error) {
 		return nil, fmt.Errorf("GitHub release has no tag")
 	}
 	wantBin := AssetName(gh.TagName, c.goos(), c.goarch())
+	// Hand-uploaded releases have carried the tag verbatim in asset names
+	// (v0.1.9 shipped "leetd-v0.1.9-darwin-arm64"), which broke the update
+	// path for every older install. Accept both the normalized name and the
+	// raw-tag name (RR-030).
+	wantBinAlt := "leetd-" + gh.TagName + "-" + c.goos() + "-" + c.goarch()
+	if c.goos() == "windows" {
+		wantBinAlt += ".exe"
+	}
 	wantSum := ChecksumName(gh.TagName)
 	rel := &Release{Tag: gh.TagName, HTMLURL: gh.HTMLURL}
 	for _, a := range gh.Assets {
 		switch a.Name {
-		case wantBin:
+		case wantBin, wantBinAlt:
 			rel.AssetName = a.Name
 			rel.AssetURL = a.BrowserURL
 			rel.AssetDigest = digestHex(a.Digest)
@@ -151,7 +159,7 @@ func (c *Client) Latest(ctx context.Context) (*Release, error) {
 		}
 	}
 	if rel.AssetURL == "" {
-		return nil, fmt.Errorf("no %s in %s — this platform is not in the release", wantBin, gh.TagName)
+		return nil, fmt.Errorf("no %s (or %s) in %s — this platform is not in the release", wantBin, wantBinAlt, gh.TagName)
 	}
 	if rel.ChecksumURL == "" {
 		return nil, fmt.Errorf("no checksums file in %s — refusing to download an unverified binary", gh.TagName)

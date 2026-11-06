@@ -51,8 +51,16 @@ func TestSyncEverySecRestartsTicker(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go n.syncLoop(ctx)
+	t.Cleanup(func() {
+		cancel()
+		n.WaitLoops()
+	})
+	// StartLoops (not a bare go syncLoop) so the loop is drained by
+	// WaitLoops before TempDir cleanup; role "client" + file:// share
+	// means no networking starts.
+	if err := n.StartLoops(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	waitTicks(t, &ticks, 1, 2*time.Second)
 	if got := ticks.Load(); got != 1 {
@@ -95,8 +103,15 @@ func TestFirstDigestDoesNotWaitUntilTomorrow(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go n.jobsLoop(ctx)
+	t.Cleanup(func() {
+		cancel()
+		n.WaitLoops()
+	})
+	// StartLoops keeps the digest writer tracked; WaitLoops in cleanup
+	// guarantees the commit lands before the TempDir disappears.
+	if err := n.StartLoops(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	day := time.Now().UTC().Format("2006-01-02")
 	path := filepath.Join(storeDir, "_audit", "DIGEST-"+day+".md")

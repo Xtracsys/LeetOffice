@@ -39,7 +39,7 @@ a.blocklink{text-decoration:none;border-bottom:1px dotted #06c}
 </head>
 <body>
 `)
-	fmt.Fprintf(&b, "<h1>%s</h1>\n<p class=\"meta\">%s · %s · v%d · updated %s", html.EscapeString(d.Title), d.Type, html.EscapeString(d.Slug), d.Version, d.Updated)
+	fmt.Fprintf(&b, "<h1>%s</h1>\n<p class=\"meta\">%s · %s · v%d · updated %s", html.EscapeString(d.Title), html.EscapeString(string(d.Type)), html.EscapeString(d.Slug), d.Version, html.EscapeString(d.Updated))
 	if len(d.Tags) > 0 {
 		b.WriteString(" · " + html.EscapeString(strings.Join(d.Tags, ", ")))
 	}

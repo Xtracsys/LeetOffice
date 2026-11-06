@@ -211,8 +211,7 @@ func TestSettingsPageAndInvite(t *testing.T) {
 	ui.Config.Role = "coordinator"
 	var live []string
 	ui.RotateEnrollment = func(secret string) { live = append(live, secret) }
-	cfg := *ui.Config
-	if err := cfg.Save(ui.CfgPath); err != nil {
+	if err := ui.Config.Save(ui.CfgPath); err != nil {
 		t.Fatal(err)
 	}
 	h := httptest.NewServer(ui.Handler())

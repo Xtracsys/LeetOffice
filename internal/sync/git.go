@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,6 +114,11 @@ func actorSignature(actor string) *object.Signature {
 func (r *Repo) CommitAll(actor, msg string) (plumbing.Hash, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.commitAllLocked(actor, msg)
+}
+
+// commitAllLocked is CommitAll for callers already holding r.mu.
+func (r *Repo) commitAllLocked(actor, msg string) (plumbing.Hash, error) {
 	if _, err := r.wt.Add("."); err != nil {
 		return plumbing.ZeroHash, err
 	}
@@ -247,10 +253,57 @@ type SyncResult struct {
 	HeadCommit string
 }
 
+// snapshotInFlight commits any uncommitted worktree state under the repo
+// lock (FR-031). Store.Save writes files WITHOUT the repo lock, and every
+// destructive worktree operation below (fast-forward hard reset, merge file
+// writes) would silently discard such in-flight content — observed at 248
+// of 250 writes lost in a stress probe. Snapshotting turns in-flight edits
+// into ordinary commits the block-merge then preserves. Untracked derived
+// files (NOTICE.md) get committed too, which is honest content for an
+// audited store.
+func (r *Repo) snapshotInFlight(actor string) error {
+	if _, err := r.wt.Add("."); err != nil {
+		return err
+	}
+	status, err := r.wt.Status()
+	if err != nil {
+		return err
+	}
+	if status.IsClean() {
+		return nil
+	}
+	_, err = r.commitAllLocked(actor, "sync: snapshot in-flight edits")
+	if err != nil && !errors.Is(err, ErrNoChanges) {
+		return err
+	}
+	return nil
+}
+
+// syncTrace emits one line per sync decision when LEET_SYNC_TRACE=1 — the
+// ops hook that made the FR-031 orphaning diagnosis possible. Cheap when
+// disabled (one env lookup, cached).
+func syncTrace(format string, args ...any) {
+	if !traceEnabled() {
+		return
+	}
+	log.Printf("sync-trace: "+format, args...)
+}
+
+var traceEnvOnce sync.Once
+var traceEnvVal bool
+
+func traceEnabled() bool {
+	traceEnvOnce.Do(func() { traceEnvVal = os.Getenv("LEET_SYNC_TRACE") == "1" })
+	return traceEnvVal
+}
+
 func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	res := &SyncResult{}
+	if err := r.snapshotInFlight(actor); err != nil {
+		return nil, err
+	}
 	head, err := r.repo.Head()
 	if err != nil {
 		// unborn HEAD (fresh clone): check out the remote tip, or seed by push
@@ -318,6 +371,34 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	}
 
 	if base == head.Hash() { // remote ahead only → fast-forward
+		syncTrace("fast-forward candidate: head=%s remote=%s", short(head.Hash()), short(remoteHash))
+		// A Save may have landed mid-sync (after the start snapshot); a
+		// hard reset would eat it. Snapshot and take the merge path instead
+		// so the in-flight content survives (FR-031).
+		if err := r.snapshotInFlight(actor); err != nil {
+			return nil, err
+		}
+		status, serr := r.wt.Status()
+		if serr != nil {
+			return nil, serr
+		}
+		if !status.IsClean() || head.Hash() != r.headAfterSnapshots() {
+			// Snapshot advanced HEAD: we are now diverged, not behind.
+			conflicts, merr := r.mergeInto(remoteHash, base, actor)
+			if merr != nil {
+				return res, fmt.Errorf("merge-into(remote=%s, base=%s): %w", remoteHash, base, merr)
+			}
+			res.Merged = true
+			res.Pulled = true
+			res.Conflicts = conflicts
+			_, perr := r.push(remoteName)
+			res.Pushed = perr == nil
+			final, _ := r.repo.Head()
+			if final != nil {
+				res.HeadCommit = final.Hash().String()
+			}
+			return res, wrapSyncErr(perr)
+		}
 		if err := r.wt.Reset(&git.ResetOptions{Mode: git.HardReset, Commit: remoteHash}); err != nil {
 			return nil, err
 		}
@@ -326,6 +407,7 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	}
 
 	// Diverged: three-way block merge of the store, then commit & push.
+	syncTrace("diverged: head=%s remote=%s base=%s", short(head.Hash()), short(remoteHash), short(base))
 	conflicts, err := r.mergeInto(remoteHash, base, actor)
 	if err != nil {
 		return res, fmt.Errorf("merge-into(remote=%s, base=%s): %w", remoteHash, base, err)
@@ -345,6 +427,18 @@ func (r *Repo) Sync(remoteName, actor string) (*SyncResult, error) {
 	}
 	return res, nil
 }
+
+// headAfterSnapshots returns the current HEAD hash (caller holds r.mu).
+func (r *Repo) headAfterSnapshots() plumbing.Hash {
+	ref, err := r.repo.Head()
+	if err != nil {
+		return plumbing.ZeroHash
+	}
+	return ref.Hash()
+}
+
+// short abbreviates a hash for trace lines.
+func short(h plumbing.Hash) string { return h.String()[:7] }
 
 // pushRefSpec updates the share's main without a leading '+'. Force-push
 // would overwrite a concurrent tip (D6); a non-fast-forward is rejected
@@ -480,6 +574,11 @@ func blobAt(repo *git.Repository, hash plumbing.Hash) ([]byte, error) {
 // on one side only are taken from that side. Writes the result to the worktree
 // and commits it with two parents.
 func (r *Repo) mergeInto(remoteHash, base plumbing.Hash, actor string) ([]store.Conflict, error) {
+	// mergeInto overwrites worktree files with committed blobs; anything
+	// saved since the caller's snapshot must be committed first (FR-031).
+	if err := r.snapshotInFlight(actor); err != nil {
+		return nil, err
+	}
 	head, err := r.repo.Head()
 	if err != nil {
 		return nil, err
