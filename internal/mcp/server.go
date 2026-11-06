@@ -33,14 +33,24 @@ type Hit struct {
 // SearchFunc is the pluggable search backend (rag.Search satisfies it).
 type SearchFunc func(query string, typ string, tags []string, limit int) ([]Hit, error)
 
+// Authenticator resolves a one-time-issued bearer credential to an immutable
+// server-side actor and its exact tool grants.
+type Authenticator interface {
+	Authenticate(token string) (actor, displayName string, scopes []string, ok bool)
+}
+
 // Server is an MCP server bound to one store, repo, and actor.
 type Server struct {
-	store   *store.Store
-	repo    *leetSync.Repo
-	search  SearchFunc
-	actor   string
-	cfg     *config.Config
-	cfgPath string
+	store         *store.Store
+	repo          *leetSync.Repo
+	search        SearchFunc
+	actor         string
+	displayName   string
+	authenticator Authenticator
+	authenticated bool
+	scopes        map[string]bool
+	cfg           *config.Config
+	cfgPath       string
 	// OnWrite is invoked after a successful send_message so the daemon
 	// can push immediately instead of waiting for the sync ticker.
 	OnWrite func()
@@ -51,6 +61,14 @@ func NewServer(s *store.Store, repo *leetSync.Repo, search SearchFunc, actor str
 	return &Server{store: s, repo: repo, search: search, actor: actor}
 }
 
+// SetAuthenticator requires credentials for the HTTP handler and authenticated
+// stdio entrypoint. A nil authenticator makes HTTP access fail closed.
+func (s *Server) SetAuthenticator(auth Authenticator) {
+	if s != nil {
+		s.authenticator = auth
+	}
+}
+
 // BindConfig attaches node.json so subscribe / mark_read persist.
 func (s *Server) BindConfig(cfg *config.Config, path string) {
 	if s == nil {
@@ -58,6 +76,72 @@ func (s *Server) BindConfig(cfg *config.Config, path string) {
 	}
 	s.cfg = cfg
 	s.cfgPath = path
+}
+
+func bearerToken(header string) string {
+	parts := strings.Fields(header)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return ""
+	}
+	return parts[1]
+}
+
+func (s *Server) authenticatedSession(token string) (*Server, bool) {
+	if s == nil || s.authenticator == nil || token == "" {
+		return nil, false
+	}
+	actor, displayName, granted, ok := s.authenticator.Authenticate(token)
+	if !ok || !strings.HasPrefix(actor, "agent:") || len(strings.TrimPrefix(actor, "agent:")) == 0 {
+		return nil, false
+	}
+	known := make(map[string]bool)
+	for _, name := range ToolNames() {
+		known[name] = true
+	}
+	session := *s
+	session.actor = actor
+	session.displayName = displayName
+	session.authenticated = true
+	session.scopes = make(map[string]bool, len(granted))
+	for _, name := range granted {
+		if !known[name] {
+			return nil, false
+		}
+		session.scopes[name] = true
+	}
+	return &session, true
+}
+
+// ToolNames is the canonical scope vocabulary, derived from the tools exposed
+// by tools/list so credential grants cannot name non-existent MCP operations.
+func ToolNames() []string {
+	descriptors := toolDescriptors()
+	names := make([]string, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		if name, ok := descriptor["name"].(string); ok {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func (s *Server) visibleToolDescriptors() []map[string]any {
+	descriptors := toolDescriptors()
+	if !s.authenticated {
+		return descriptors
+	}
+	visible := make([]map[string]any, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		name, _ := descriptor["name"].(string)
+		if s.scopes[name] {
+			visible = append(visible, descriptor)
+		}
+	}
+	return visible
+}
+
+func (s *Server) hasToolScope(name string) bool {
+	return !s.authenticated || s.scopes[name]
 }
 
 // --- JSON-RPC plumbing -----------------------------------------------------
@@ -87,10 +171,41 @@ const (
 	errInvalid   = -32602
 	errInternal  = -32603
 	protocolCode = "2025-06-18"
+	maxHTTPBody  = 1 << 20
 )
 
-// ServeStdio serves newline-delimited JSON-RPC until the reader closes.
+// ServeStdio serves newline-delimited JSON-RPC until the reader closes. It is
+// retained for trusted in-process use only; production credentialed sessions
+// must use ServeStdioAuthenticated.
 func (s *Server) ServeStdio(r io.Reader, w io.Writer) error {
+	if s.authenticator != nil {
+		return errors.New("mcp: stdio requires an agent credential")
+	}
+	return s.serveStdio(r, w)
+}
+
+// ServeStdioAuthenticated binds each request to a freshly verified credential
+// so disable, rotation, or revocation takes effect on the next MCP message.
+func (s *Server) ServeStdioAuthenticated(token string, r io.Reader, w io.Writer) error {
+	if _, ok := s.authenticatedSession(token); !ok {
+		return errors.New("mcp: invalid or inactive agent credential")
+	}
+	return s.serveStdioWith(r, w, func(req rpcRequest) (*rpcResponse, error) {
+		session, ok := s.authenticatedSession(token)
+		if !ok {
+			return nil, errors.New("mcp: agent credential is no longer active")
+		}
+		return session.dispatch(req), nil
+	})
+}
+
+func (s *Server) serveStdio(r io.Reader, w io.Writer) error {
+	return s.serveStdioWith(r, w, func(req rpcRequest) (*rpcResponse, error) {
+		return s.dispatch(req), nil
+	})
+}
+
+func (s *Server) serveStdioWith(r io.Reader, w io.Writer, dispatch func(rpcRequest) (*rpcResponse, error)) error {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 1<<20), 1<<22)
 	enc := json.NewEncoder(w)
@@ -105,7 +220,10 @@ func (s *Server) ServeStdio(r io.Reader, w io.Writer) error {
 				Error: &rpcError{Code: errParse, Message: "parse error"}})
 			continue
 		}
-		resp := s.dispatch(req)
+		resp, err := dispatch(req)
+		if err != nil {
+			return err
+		}
 		if resp == nil { // notification — no response
 			continue
 		}
@@ -123,13 +241,24 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)
 			return
 		}
+		session, ok := s.authenticatedSession(bearerToken(r.Header.Get("Authorization")))
+		if !ok {
+			http.Error(w, "valid agent bearer credential required", http.StatusUnauthorized)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxHTTPBody)
 		var req rpcRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
 			writeJSON(w, rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"),
 				Error: &rpcError{Code: errParse, Message: "parse error"}})
 			return
 		}
-		resp := s.dispatch(req)
+		resp := session.dispatch(req)
 		if resp == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -160,7 +289,7 @@ func (s *Server) dispatch(req rpcRequest) *rpcResponse {
 	case "ping":
 		return result(req, map[string]any{})
 	case "tools/list":
-		return result(req, map[string]any{"tools": toolDescriptors()})
+		return result(req, map[string]any{"tools": s.visibleToolDescriptors()})
 	case "tools/call":
 		return s.callTool(req)
 	default:
@@ -205,6 +334,9 @@ func (s *Server) callTool(req rpcRequest) *rpcResponse {
 }
 
 func (s *Server) invoke(name string, args map[string]any) (any, error) {
+	if !s.hasToolScope(name) {
+		return nil, fmt.Errorf("credential does not grant the %q tool scope", name)
+	}
 	switch name {
 	case "search":
 		return s.toolSearch(args)

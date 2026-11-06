@@ -34,6 +34,15 @@ func keywordStub(query, typ string, tags []string, limit int) ([]Hit, error) {
 	return []Hit{{DocID: "d1", BlockID: "b1", Slug: "spec", Title: "Spec", Snippet: "match", Score: 1}}, nil
 }
 
+type testAuthenticator struct{ token string }
+
+func (a testAuthenticator) Authenticate(token string) (string, string, []string, bool) {
+	if token != a.token {
+		return "", "", nil, false
+	}
+	return "agent:http-test", "HTTP test", ToolNames(), true
+}
+
 // call drives one JSON-RPC request through ServeStdio and returns the
 // unmarshalled result (tools/call results have their content text extracted).
 func call(t *testing.T, srv *Server, method string, params any) map[string]any {
@@ -312,11 +321,13 @@ func TestNotificationsProduceNoResponse(t *testing.T) {
 
 func TestHTTPHandler(t *testing.T) {
 	srv, _, _ := newTestServer(t)
+	srv.SetAuthenticator(testAuthenticator{token: "test-bearer"})
 	h := srv.Handler()
 
 	body := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-bearer")
 	h.ServeHTTP(rec, req)
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
@@ -337,6 +348,7 @@ func TestHTTPHandler(t *testing.T) {
 	callBody := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"write_doc","arguments":{"id_or_slug":"http-doc","content":"via http"}}}`
 	rec2 := httptest.NewRecorder()
 	req2 := httptest.NewRequest("POST", "/", strings.NewReader(callBody))
+	req2.Header.Set("Authorization", "Bearer test-bearer")
 	h.ServeHTTP(rec2, req2)
 	if _, err := srv.store.Load("http-doc"); err != nil {
 		t.Fatalf("http write_doc did not persist: %v", err)
